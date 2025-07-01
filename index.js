@@ -1,0 +1,657 @@
+import * as Baileys from "@whiskeysockets/baileys";
+import P from 'pino';
+import qrcode from 'qrcode-terminal';
+import sharp from 'sharp';
+
+// Function to create sticker from image buffer
+async function createSticker(imageBuffer) {
+    try {
+        console.log('🔧 Processing image buffer, size:', imageBuffer.length, 'bytes');
+
+        // Validate buffer
+        if (!imageBuffer || imageBuffer.length === 0) {
+            throw new Error('Empty or invalid image buffer');
+        }
+
+        // Convert image to WebP format and resize for sticker
+        const stickerBuffer = await sharp(imageBuffer)
+            .resize(512, 512, {
+                fit: 'contain',
+                background: { r: 0, g: 0, b: 0, alpha: 0 }
+            })
+            .webp({
+                quality: 80,
+                lossless: false
+            })
+            .toBuffer();
+
+        console.log('✅ Sticker created successfully, size:', stickerBuffer.length, 'bytes');
+        return stickerBuffer;
+    } catch (error) {
+        console.error('❌ Error creating sticker:', error.message);
+        console.error('📋 Stack trace:', error.stack);
+        throw error;
+    }
+}
+
+// Global variables for connection management
+let isConnecting = false;
+let reconnectAttempts = 0;
+const maxReconnectAttempts = 5;
+const baseReconnectDelay = 5000; // Start with 5 seconds
+let currentSocket = null; // Track current socket instance
+let sessionErrorCount = 0; // Track session errors
+const maxSessionErrors = 10; // Clear sessions after this many errors
+
+// Function to handle session errors
+async function handleSessionError() {
+    sessionErrorCount++;
+    console.log(`⚠️ Session error count: ${sessionErrorCount}/${maxSessionErrors}`);
+    
+    if (sessionErrorCount >= maxSessionErrors) {
+        console.log('🔧 Too many session errors. Clearing sessions and reconnecting...');
+        sessionErrorCount = 0;
+        
+        try {
+            const fs = await import('fs');
+            const path = await import('path');
+            
+            // Clear only session files, keep creds
+            const authPath = path.join(process.cwd(), 'auth');
+            if (fs.existsSync(authPath)) {
+                const files = fs.readdirSync(authPath);
+                files.forEach(file => {
+                    if (file.includes('session-') || file.includes('sender-key-') || file.includes('app-state-')) {
+                        const filePath = path.join(authPath, file);
+                        try {
+                            fs.unlinkSync(filePath);
+                            console.log(`🗑️ Cleared session file: ${file}`);
+                        } catch (err) {
+                            console.log(`⚠️ Could not delete ${file}:`, err.message);
+                        }
+                    }
+                });
+            }
+            
+            // Restart connection
+            setTimeout(() => {
+                console.log('🔄 Restarting bot with cleared sessions...');
+                startBot();
+            }, 3000);
+            
+        } catch (error) {
+            console.error('❌ Error clearing sessions:', error.message);
+        }
+    }
+}
+
+// Function to cleanup existing connection
+function cleanupConnection() {
+    if (currentSocket) {
+        try {
+            console.log('🧹 Cleaning up existing connection...');
+            // Remove all event listeners first
+            currentSocket.ev.removeAllListeners();
+            
+            // Properly close the socket without accessing ws directly
+            if (typeof currentSocket.end === 'function') {
+                currentSocket.end();
+            }
+            
+            // Force close WebSocket connection if it exists
+            if (currentSocket.ws && typeof currentSocket.ws.close === 'function') {
+                currentSocket.ws.close();
+            }
+            
+            currentSocket = null;
+            console.log('✅ Connection cleanup completed');
+        } catch (error) {
+            console.log('⚠️ Error during cleanup:', error.message);
+            currentSocket = null; // Force reset even if cleanup fails
+        }
+    }
+}
+
+async function startBot() {
+    // Prevent multiple simultaneous connection attempts
+    if (isConnecting) {
+        console.log('⏳ Connection attempt already in progress, skipping...');
+        return;
+    }
+
+    isConnecting = true;
+
+    try {
+        console.log('🚀 Starting WhatsApp Bot...');
+
+        // If too many conflicts, show helpful message
+        if (reconnectAttempts >= 3) {
+            console.log('⚠️ Multiple conflicts detected. This usually means:');
+            console.log('   1. WhatsApp Web is open in another browser/tab');
+            console.log('   2. Another instance of this bot is running');
+            console.log('   3. The same phone number is used elsewhere');
+            console.log('💡 Please close other WhatsApp Web sessions before continuing.');
+        }
+
+        // Cleanup any existing connection first
+        cleanupConnection();
+
+        // Add a small delay to ensure cleanup is complete
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        const { state, saveCreds } = await Baileys.useMultiFileAuthState('auth');
+        const { version } = await Baileys.fetchLatestBaileysVersion();
+
+        const sock = Baileys.makeWASocket({
+            version,
+            auth: state,
+            logger: P({ level: 'fatal' }), // Further reduced logging to prevent spam
+            printQRInTerminal: false,
+            browser: ['WhatsApp Bot', 'Chrome', '1.0.0'],
+            connectTimeoutMs: 60000, // 60 second timeout
+            defaultQueryTimeoutMs: 60000,
+            keepAliveIntervalMs: 30000,
+            markOnlineOnConnect: false, // Prevent showing as online immediately
+            syncFullHistory: false, // Don't sync full message history
+            generateHighQualityLinkPreview: false,
+            getMessage: async () => undefined, // Prevent message fetch conflicts
+            shouldIgnoreJid: jid => false, // Don't ignore any JIDs
+            shouldSyncHistoryMessage: () => false, // Don't sync history to prevent session conflicts
+            retryRequestDelayMs: 250,
+            maxMsgRetryCount: 3,
+            fireInitQueries: true,
+            emitOwnEvents: false // Don't emit events for own messages
+        });
+
+        // Store the current socket reference
+        currentSocket = sock;
+
+        currentSocket = sock; // Track the current socket instance
+
+        sock.ev.on('creds.update', saveCreds);
+
+        sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+            try {
+                if (qr) {
+                    console.log('📱 Scan this QR code with your WhatsApp:');
+                    qrcode.generate(qr, { small: true });
+                }
+
+                if (connection === 'close') {
+                    isConnecting = false;
+
+                    const shouldReconnect = lastDisconnect.error?.output?.statusCode !== Baileys.DisconnectReason.loggedOut;
+                    const errorMessage = lastDisconnect.error?.message || 'Unknown error';
+
+                    console.log('❌ Connection closed due to:', errorMessage);
+
+                    // Handle specific error types
+                    if (errorMessage.includes('conflict') || errorMessage.includes('replaced')) {
+                        reconnectAttempts++;
+                        console.log(`⚠️ Conflict detected (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+
+                        if (reconnectAttempts >= maxReconnectAttempts) {
+                            console.log('🛑 Too many conflict errors. Resetting auth and waiting longer...');
+                            // Clear auth directory to force fresh authentication
+                            console.log('🗑️ Clearing authentication data to resolve conflicts...');
+                            setTimeout(async () => {
+                                try {
+                                    const fs = await import('fs');
+                                    const path = await import('path');
+                                    const authPath = path.join(process.cwd(), 'auth');
+                                    if (fs.existsSync(authPath)) {
+                                        fs.rmSync(authPath, { recursive: true, force: true });
+                                        console.log('✅ Auth data cleared. Bot will need to be re-authenticated.');
+                                    }
+                                } catch (clearError) {
+                                    console.error('❌ Error clearing auth:', clearError.message);
+                                }
+                                reconnectAttempts = 0;
+                                startBot();
+                            }, baseReconnectDelay * 4); // 20 seconds
+                            return;
+                        }
+
+                        // Progressive delay for conflicts
+                        const conflictDelay = baseReconnectDelay * Math.pow(2, reconnectAttempts - 1);
+                        console.log(`🔄 Attempting to reconnect in ${conflictDelay / 1000} seconds...`);
+                        setTimeout(() => startBot(), conflictDelay);
+                    }
+                    else if (shouldReconnect) {
+                        // Reset attempt counter for non-conflict errors only
+                        if (!errorMessage.includes('conflict')) {
+                            reconnectAttempts = 0;
+                        }
+                        console.log('🔄 Attempting to reconnect in 3 seconds...');
+                        setTimeout(() => startBot(), 3000);
+                    }
+                    else {
+                        console.log('🚪 Logged out from WhatsApp. Please restart the bot.');
+                        reconnectAttempts = 0;
+                    }
+                } else if (connection === 'open') {
+                    isConnecting = false;
+                    reconnectAttempts = 0; // Reset on successful connection
+                    sessionErrorCount = 0; // Reset session error count
+                    console.log('✅ Connected to WhatsApp!');
+                } else if (connection === 'connecting') {
+                    console.log('🔗 Connecting to WhatsApp...');
+                }
+            } catch (error) {
+                console.error('❌ Error in connection update:', error.message);
+                isConnecting = false;
+            }
+        });
+
+        // Handle specific WhatsApp errors
+        sock.ev.on('CB:call', (node) => {
+            try {
+                console.log('📞 Incoming call detected');
+                // Auto-reject calls to prevent issues
+                sock.rejectCall(node.attrs.id, node.attrs.from);
+                console.log('✅ Call rejected automatically');
+            } catch (error) {
+                console.error('❌ Error handling call:', error.message);
+            }
+        });
+
+        sock.ev.on('messages.upsert', async ({ messages }) => {
+            try {
+                if (!messages || messages.length === 0) {
+                    return; // Skip if no messages
+                }
+
+                const msg = messages[0];
+
+                // Validate message structure
+                if (!msg || !msg.key || !msg.message) {
+                    console.log('⚠️ Skipping invalid message structure');
+                    return; // Skip invalid messages
+                }
+
+                // Handle session errors - if message is corrupted, skip it
+                if (msg.messageStubType || msg.message?.protocolMessage) {
+                    console.log('⚠️ Skipping protocol/stub message (likely session error)');
+                    return;
+                }
+
+                // Skip messages from self
+                if (msg.key.fromMe) {
+                    return;
+                }
+
+                const sender = msg.key.remoteJid;
+                if (!sender) return;
+
+                // Determine if this is a group chat
+                const isGroup = sender.includes('@g.us');
+                const isPrivate = !isGroup;
+
+                // Handle text messages
+                if (msg.message?.conversation || msg.message?.extendedTextMessage?.text) {
+                    let text = '';
+                    
+                    // Extract text from different message types
+                    if (msg.message.conversation) {
+                        text = msg.message.conversation;
+                    } else if (msg.message.extendedTextMessage?.text) {
+                        text = msg.message.extendedTextMessage.text;
+                    }
+                    
+                    text = text.toLowerCase().trim();
+                    if (!text) return;
+
+                    // Get sender info for groups
+                    const senderName = msg.pushName || 'Unknown';
+                    const actualSender = isGroup ? msg.key.participant : sender;
+
+                    console.log(`📩 Message from ${senderName} in ${isGroup ? 'group' : 'private'} (${sender}): ${text}`);
+
+                    // Bot commands that work in both private and group chats
+                    if (text === 'hi' || text === '!hello') {
+                        const greeting = isGroup 
+                            ? `Hello @${actualSender.split('@')[0]}! My name is DEV~BOT. How can I help you? I'm here to make a smile to u...😊`
+                            : 'Hello! My name is DEV~BOT. How can I help you?';
+                        
+                        const messageOptions = isGroup 
+                            ? { text: greeting, mentions: [actualSender] }
+                            : { text: greeting };
+                            
+                        await sock.sendMessage(sender, messageOptions);
+                        console.log('✅ Reply sent successfully');
+                    } 
+                    else if (text === '!sticker') {
+                        const helpText = isGroup
+                            ? '🎨 To make a sticker in groups:\n1. Send an image with "!sticker" as caption\n2. Or reply to an image with "!sticker"\n3. Use @botname !sticker for direct commands'
+                            : '🎨 To make a sticker:\n1. Send an image with "!sticker" as caption\n2. Or reply to an image with "!sticker"';
+                            
+                        await sock.sendMessage(sender, { text: helpText });
+                        console.log('✅ Sticker help sent successfully');
+                    }
+                    else if (text === '!help' || text === '!commands') {
+                        const helpMessage = `🤖 *Bot Commands:*\n\n` +
+                            `• *!hi* or *!hello* - Get greeting\n` +
+                            `• *!sticker* - Create sticker from image\n` +
+                            `• *!help* - Show this help menu\n` +
+                            `${!isGroup ? `• *!reset* - Clear sessions (private only)\n` : ''}` +
+                            `\n📱 *Sticker Creation:*\n` +
+                            `1. Send image with "!sticker" caption\n` +
+                            `2. Reply to image with "!sticker"\n\n` +
+                            `${isGroup ? '💡 *Group Tip:* Bot works in groups too!' : '💡 *Tip:* All commands work in private chat!'}`;
+                            
+                        await sock.sendMessage(sender, { text: helpMessage });
+                        console.log('✅ Help message sent successfully');
+                    }
+                }
+
+                // Handle image messages with sticker command - moved outside to avoid duplication
+
+                // Handle image messages with sticker command
+                if (msg.message?.imageMessage) {
+                    const caption = msg.message.imageMessage.caption?.toLowerCase().trim();
+
+                    if (caption === '!sticker') {
+                        const senderName = msg.pushName || 'Unknown';
+                        const actualSender = isGroup ? msg.key.participant : sender;
+                        
+                        console.log(`🎨 Processing image message for sticker creation from ${senderName}...`);
+
+                        try {
+                            // Send processing message with mention in groups
+                            const processingText = isGroup 
+                                ? `🎨 @${actualSender.split('@')[0]} Creating sticker... Please wait!`
+                                : '🎨 Creating sticker... Please wait!';
+                                
+                            const processingOptions = isGroup 
+                                ? { text: processingText, mentions: [actualSender] }
+                                : { text: processingText };
+                                
+                            await sock.sendMessage(sender, processingOptions);
+
+                            // Download the image with retries
+                            let imageBuffer;
+                            let attempts = 0;
+                            const maxAttempts = 3;
+
+                            while (attempts < maxAttempts) {
+                                try {
+                                    console.log(`📥 Downloading image (attempt ${attempts + 1}/${maxAttempts})...`);
+                                    imageBuffer = await Baileys.downloadMediaMessage(msg, 'buffer', {});
+                                    break;
+                                } catch (downloadError) {
+                                    attempts++;
+                                    console.error(`❌ Download attempt ${attempts} failed:`, downloadError.message);
+                                    if (attempts >= maxAttempts) {
+                                        throw new Error('Failed to download image after multiple attempts');
+                                    }
+                                    // Wait before retry
+                                    await new Promise(resolve => setTimeout(resolve, 1000));
+                                }
+                            }
+
+                            if (!imageBuffer) {
+                                throw new Error('Failed to download image');
+                            }
+
+                            // Create sticker
+                            const stickerBuffer = await createSticker(imageBuffer);
+
+                            // Send sticker with metadata
+                            await sock.sendMessage(sender, {
+                                sticker: stickerBuffer,
+                                mimetype: 'image/webp'
+                            });
+
+                            console.log(`✅ Sticker sent successfully to ${isGroup ? 'group' : 'private chat'}`);
+                        } catch (stickerError) {
+                            console.error('❌ Error creating sticker:', stickerError.message);
+                            
+                            const errorText = isGroup
+                                ? `❌ @${actualSender.split('@')[0]} Failed to create sticker: ${stickerError.message}\n\nPlease make sure you sent a valid image (JPG, PNG, etc.)`
+                                : `❌ Failed to create sticker: ${stickerError.message}\n\nPlease make sure you sent a valid image (JPG, PNG, etc.)`;
+                                
+                            const errorOptions = isGroup
+                                ? { text: errorText, mentions: [actualSender] }
+                                : { text: errorText };
+                                
+                            await sock.sendMessage(sender, errorOptions);
+                        }
+                    }
+                }
+
+                // Handle quoted/reply messages for sticker creation
+                if (msg.message?.extendedTextMessage) {
+                    const text = msg.message.extendedTextMessage.text?.toLowerCase().trim();
+                    const contextInfo = msg.message.extendedTextMessage.contextInfo;
+                    const quotedMessage = contextInfo?.quotedMessage;
+
+                    if (text === '!sticker' && quotedMessage?.imageMessage) {
+                        const senderName = msg.pushName || 'Unknown';
+                        const actualSender = isGroup ? msg.key.participant : sender;
+                        
+                        console.log(`🎨 Processing quoted image for sticker creation from ${senderName}...`);
+                        console.log('📋 Context info:', JSON.stringify(contextInfo, null, 2));
+
+                        try {
+                            // Send processing message with mention in groups
+                            const processingText = isGroup 
+                                ? `🎨 @${actualSender.split('@')[0]} Creating sticker from replied image... Please wait!`
+                                : '🎨 Creating sticker from replied image... Please wait!';
+                                
+                            const processingOptions = isGroup 
+                                ? { text: processingText, mentions: [actualSender] }
+                                : { text: processingText };
+                                
+                            await sock.sendMessage(sender, processingOptions);
+
+                            // Try different approaches to construct the quoted message
+                            let quotedMsg;
+
+                            // Method 1: Use the participant and stanzaId from contextInfo
+                            if (contextInfo.participant && contextInfo.stanzaId) {
+                                quotedMsg = {
+                                    key: {
+                                        remoteJid: contextInfo.participant,
+                                        fromMe: false,
+                                        id: contextInfo.stanzaId
+                                    },
+                                    message: { imageMessage: quotedMessage.imageMessage }
+                                };
+                            }
+                            // Method 2: Use the current sender and stanzaId
+                            else if (contextInfo.stanzaId) {
+                                quotedMsg = {
+                                    key: {
+                                        remoteJid: sender,
+                                        fromMe: false,
+                                        id: contextInfo.stanzaId
+                                    },
+                                    message: { imageMessage: quotedMessage.imageMessage }
+                                };
+                            }
+                            // Method 3: Fallback to current message structure
+                            else {
+                                quotedMsg = {
+                                    key: {
+                                        remoteJid: sender,
+                                        fromMe: false,
+                                        id: msg.key.id + '_quoted'
+                                    },
+                                    message: { imageMessage: quotedMessage.imageMessage }
+                                };
+                            }
+
+                            console.log('📋 Constructed quoted message key:', quotedMsg.key);
+
+                            // Download the quoted image with retries
+                            let imageBuffer;
+                            let attempts = 0;
+                            const maxAttempts = 3;
+
+                            while (attempts < maxAttempts) {
+                                try {
+                                    console.log(`📥 Downloading quoted image (attempt ${attempts + 1}/${maxAttempts})...`);
+
+                                    // Try to download with different methods
+                                    if (attempts === 0) {
+                                        // First attempt: Use constructed message
+                                        imageBuffer = await Baileys.downloadMediaMessage(quotedMsg, 'buffer', {});
+                                    } else if (attempts === 1) {
+                                        // Second attempt: Try with minimal key structure
+                                        const simpleQuotedMsg = {
+                                            key: { id: contextInfo.stanzaId || msg.key.id },
+                                            message: { imageMessage: quotedMessage.imageMessage }
+                                        };
+                                        imageBuffer = await Baileys.downloadMediaMessage(simpleQuotedMsg, 'buffer', {});
+                                    } else {
+                                        // Third attempt: Direct download from imageMessage
+                                        const directMsg = {
+                                            message: { imageMessage: quotedMessage.imageMessage }
+                                        };
+                                        imageBuffer = await Baileys.downloadMediaMessage(directMsg, 'buffer', {});
+                                    }
+
+                                    console.log('✅ Successfully downloaded quoted image');
+                                    break;
+                                } catch (downloadError) {
+                                    attempts++;
+                                    console.error(`❌ Download attempt ${attempts} failed:`, downloadError.message);
+                                    if (attempts >= maxAttempts) {
+                                        throw new Error(`Failed to download quoted image after ${maxAttempts} attempts: ${downloadError.message}`);
+                                    }
+                                    // Wait before retry
+                                    await new Promise(resolve => setTimeout(resolve, 1000));
+                                }
+                            }
+
+                            if (!imageBuffer) {
+                                throw new Error('Failed to download quoted image - buffer is empty');
+                            }
+
+                            // Create sticker
+                            const stickerBuffer = await createSticker(imageBuffer);
+
+                            // Send sticker with metadata
+                            await sock.sendMessage(sender, {
+                                sticker: stickerBuffer,
+                                mimetype: 'image/webp'
+                            });
+
+                            console.log(`✅ Sticker created from reply successfully in ${isGroup ? 'group' : 'private chat'}`);
+                        } catch (stickerError) {
+                            console.error('❌ Error creating sticker from reply:', stickerError.message);
+                            console.error('📋 Full error:', stickerError);
+                            
+                            const errorText = isGroup
+                                ? `❌ @${actualSender.split('@')[0]} Failed to create sticker from replied image: ${stickerError.message}\n\nTip: Try sending the image directly with "!sticker" as caption instead.`
+                                : `❌ Failed to create sticker from replied image: ${stickerError.message}\n\nTip: Try sending the image directly with "!sticker" as caption instead.`;
+                                
+                            const errorOptions = isGroup
+                                ? { text: errorText, mentions: [actualSender] }
+                                : { text: errorText };
+                                
+                            await sock.sendMessage(sender, errorOptions);
+                        }
+                    }
+                }
+
+            } catch (error) {
+                console.error('❌ Error processing message:', error.message);
+                console.error('📋 Error details:', error.stack);
+
+                // Try to send an error message to the sender if possible
+                try {
+                    const sender = messages[0]?.key?.remoteJid;
+                    if (sender) {
+                        await sock.sendMessage(sender, {
+                            text: 'Sorry, I encountered an error processing your message. Please try again later.'
+                        });
+                    }
+                } catch (sendError) {
+                    console.error('❌ Failed to send error message:', sendError.message);
+                }
+            }
+        });
+
+        // Handle socket errors
+        sock.ev.on('error', (error) => {
+            console.error('❌ Socket error:', error.message);
+            
+            // Handle session-related errors
+            if (error.message.includes('Bad MAC') || 
+                error.message.includes('decrypt') || 
+                error.message.includes('session')) {
+                console.log('🔧 Detected session error, handling...');
+                handleSessionError();
+            }
+        });
+
+        // Handle session errors and decryption issues
+        sock.ev.on('CB:message,type:text', (node) => {
+            console.log('🔍 Raw message node received:', JSON.stringify(node, null, 2));
+        });
+
+        // Handle session errors specifically
+        sock.ev.on('CB:iq,type:error', (node) => {
+            console.log('⚠️ IQ Error received:', JSON.stringify(node, null, 2));
+        });
+
+        // Enhanced error handling for session issues
+        sock.ev.on('messaging-history.set', ({ isLatest }) => {
+            console.log('📚 Message history set, isLatest:', isLatest);
+        });
+
+    } catch (error) {
+        isConnecting = false;
+        console.error('❌ Failed to start bot:', error.message);
+
+        // Handle specific startup errors
+        if (error.message.includes('conflict')) {
+            console.log('🔄 Conflict during startup, waiting longer before retry...');
+            setTimeout(() => startBot(), baseReconnectDelay * 3); // 15 seconds for startup conflicts
+        } else {
+            console.log('🔄 Retrying in 5 seconds...');
+            setTimeout(() => startBot(), 5000);
+        }
+    }
+}
+
+// Global error handlers
+process.on('uncaughtException', (error) => {
+    console.error('💥 Uncaught Exception:', error.message);
+    isConnecting = false; // Reset connection state
+    console.log('🔄 Restarting bot in 10 seconds...');
+    setTimeout(() => {
+        process.exit(1);
+    }, 10000);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+    console.log('\n🛑 Received SIGINT, shutting down gracefully...');
+    isConnecting = false;
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('\n🛑 Received SIGTERM, shutting down gracefully...');
+    isConnecting = false;
+    process.exit(0);
+});
+
+// Start the bot with error recovery
+async function main() {
+    try {
+        await startBot();
+    } catch (error) {
+        console.error('💥 Critical error in main:', error.message);
+        console.log('🔄 Restarting in 10 seconds...');
+        setTimeout(() => main(), 10000);
+    }
+}
+
+main();
