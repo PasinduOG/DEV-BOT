@@ -43,69 +43,31 @@ let currentSocket = null; // Track current socket instance
 let sessionErrorCount = 0; // Track session errors
 const maxSessionErrors = 10; // Clear sessions after this many errors
 
-// Simplified bad words patterns - focused on most offensive terms only
+// Ultra-simplified bad words patterns - only the most explicit terms
 const badWordsPatterns = [
-    // Core English profanity - most offensive only
-    /f+[u@*#0o]+c+k+[ings]*/i,          // fuck, fucking, etc.
-    /s+h+[i1!@*#]+t+/i,                 // shit variations
-    /b+[i1!@*#]+t+c+h+/i,               // bitch variations
-    /a+s+s+h+[o0@*#]+l+e+/i,            // asshole variations
+    // Only the most explicit English profanity (exact matches)
+    /\bfuck\b/i,
+    /\bfucking\b/i,
+    /\bbitch\b/i,
     
-    // Extreme character substitutions for core words only
-    /f[^a-z]*[u@*#0o][^a-z]*c[^a-z]*k/i,    // f___u___c___k with any chars between
-    /s[^a-z]*h[^a-z]*[i1!@*#][^a-z]*t/i,    // s___h___i___t with any chars between
+    // Only the most explicit Sinhala bad words (exact matches)
+    /\bpako\b/i,
+    /\bwesiya\b/i,
+    /\bhutto\b/i,
     
-    // Common bypass techniques for core words
-    /f[\s\-_\.\,\!\?\;\:]*u[\s\-_\.\,\!\?\;\:]*c[\s\-_\.\,\!\?\;\:]*k/i,  // f.u.c.k, f-u-c-k
-    /s[\s\-_\.\,\!\?\;\:]*h[\s\-_\.\,\!\?\;\:]*i[\s\-_\.\,\!\?\;\:]*t/i,  // s.h.i.t, s-h-i-t
-    
-    // Core Sinhala bad words - most offensive only
-    /p+[a@*#4]+k+[o0@*#]+/i,            // pako variations
-    /w+[e3@*#]+s+[i1!@*#]+y+[a@*#4]+/i, // wesiya variations
-    /h+[u@*#0o]+t+t+[ho0@*#]+/i,        // hutto variations
-    /b+[a@*#4]+l+l+[a@*#4]+/i,          // balla variations
-    
-    // Only most obvious acronyms
-    /\bwtf\b/i,                         // what the fuck
-    /\bstfu\b/i,                        // shut the fuck up
-    
-    // Reverse writing for core words only
-    /kcuf/i,                            // fuck reversed
-    /tihs/i,                            // shit reversed
+    // Only clear acronyms
+    /\bwtf\b/i,
 ];
 
-// Simplified function to check bad words - reduced sensitivity
+// Ultra-simplified function to check bad words - only exact matches
 function containsBadWords(text) {
     if (!text || typeof text !== 'string') return false;
     
-    // Basic text normalization only
-    const originalText = text.toLowerCase();
-    const cleanText = text.toLowerCase()
-        .replace(/[\s\-_\.\,\!\?\;\:]/g, '')  // Remove basic punctuation
-        .replace(/[0-9]/g, match => {  // Basic number to letter conversion
-            const numMap = {'0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's'};
-            return numMap[match] || match;
-        });
+    // Simple case-insensitive exact word matching only
+    const normalizedText = text.toLowerCase();
     
-    // Test only against core patterns
-    const textsToCheck = [originalText, cleanText];
-    
-    // Check against simplified regex patterns
-    for (const pattern of badWordsPatterns) {
-        for (const textVariant of textsToCheck) {
-            if (pattern.test(textVariant)) {
-                return true;
-            }
-        }
-    }
-    
-    // Simple scattered check for only the worst words
-    const scatteredPatterns = [
-        /f.*u.*c.*k/i,      // f...u...c...k
-        /s.*h.*i.*t/i,      // s...h...i...t
-    ];
-    
-    return scatteredPatterns.some(pattern => pattern.test(originalText));
+    // Check against ultra-simplified patterns (exact matches only)
+    return badWordsPatterns.some(pattern => pattern.test(normalizedText));
 }
 
 // Function to handle session errors
@@ -113,8 +75,9 @@ async function handleSessionError() {
     sessionErrorCount++;
     console.log(`⚠️ Session error count: ${sessionErrorCount}/${maxSessionErrors}`);
     
-    if (sessionErrorCount >= maxSessionErrors) {
-        console.log('🔧 Too many session errors. Clearing sessions and reconnecting...');
+    // Be more aggressive with session clearing for decryption errors
+    if (sessionErrorCount >= 3) { // Reduced from 10 to 3 for faster recovery
+        console.log('🔧 Multiple session errors detected. Clearing sessions and reconnecting...');
         sessionErrorCount = 0;
         
         try {
@@ -145,7 +108,7 @@ async function handleSessionError() {
             setTimeout(() => {
                 console.log('🔄 Restarting bot with cleared sessions...');
                 startBot();
-            }, 5000); // Increased delay to ensure cleanup
+            }, 3000); // Reduced delay for faster recovery
             
         } catch (error) {
             console.error('❌ Error clearing sessions:', error.message);
@@ -156,7 +119,7 @@ async function handleSessionError() {
         cleanupConnection();
         setTimeout(() => {
             startBot();
-        }, 3000);
+        }, 2000); // Reduced delay
     }
 }
 
@@ -338,10 +301,20 @@ async function startBot() {
 
                 const msg = messages[0];
 
-                // Validate message structure
-                if (!msg || !msg.key || !msg.message) {
+                // Enhanced message validation
+                if (!msg || !msg.key || (!msg.message && !msg.messageStubType)) {
                     console.log('⚠️ Skipping invalid message structure');
                     return; // Skip invalid messages
+                }
+
+                // Check for session-related errors early
+                const errorMessage = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+                if (errorMessage.includes('Decrypted message with closed session') || 
+                    errorMessage.includes('Bad MAC') ||
+                    errorMessage.includes('decrypt')) {
+                    console.log('🔧 Session error detected in message content, handling...');
+                    handleSessionError();
+                    return;
                 }
 
                 // Handle session errors - if message is corrupted, skip it
@@ -350,9 +323,35 @@ async function startBot() {
                     return;
                 }
 
-                // Skip messages from self
-                if (msg.key.fromMe) {
+                // Check for session decryption errors in message content
+                const messageText = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+                if (messageText.includes('Decrypted message with closed session')) {
+                    console.log('🔧 Detected session decryption error in message, handling...');
+                    handleSessionError();
                     return;
+                }
+
+                // Skip messages from self ONLY if they are bot responses (to prevent loops)
+                // Allow self-messages that are commands or user input
+                if (msg.key.fromMe) {
+                    // Check if this is likely a bot response by looking for bot indicators
+                    const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+                    const isBotResponse = text.includes('DEV~BOT') || 
+                                        text.includes('✅') || 
+                                        text.includes('❌') || 
+                                        text.includes('🎨') || 
+                                        text.includes('Creating sticker') ||
+                                        text.includes('Hello!') ||
+                                        text.includes('Commands:') ||
+                                        text.includes('About') ||
+                                        text.includes('Session Reset');
+                    
+                    if (isBotResponse) {
+                        console.log('⚠️ Skipping bot response message to prevent loops');
+                        return;
+                    }
+                    
+                    console.log('✅ Processing self-message as it appears to be a user command');
                 }
 
                 // Additional session validation
@@ -859,6 +858,19 @@ async function startBot() {
                 }
             }
         });
+
+        // Add special handler for decryption errors
+        const originalConsoleLog = console.log;
+        console.log = function(...args) {
+            const message = args.join(' ');
+            if (message.includes('Decrypted message with closed session')) {
+                originalConsoleLog.apply(console, args);
+                console.log('🔧 Detected session decryption error in console, handling...');
+                handleSessionError();
+                return;
+            }
+            originalConsoleLog.apply(console, args);
+        };
 
         // Handle session errors specifically
         sock.ev.on('CB:iq,type:error', (node) => {
