@@ -407,12 +407,7 @@ async function startBot() {
                     } 
                     else if (text === '!sticker') {
                         console.log(`🎨 Sticker help command from ${senderName}`);
-                        const helpText = isGroup
-                            ? '🎨 To make a sticker in groups:\n1. Send an image with "!sticker" as caption\n2. Or reply to an image with "!sticker"\n3. Use @botname !sticker for direct commands'
-                            : '🎨 To make a sticker:\n1. Send an image with "!sticker" as caption\n2. Or reply to an image with "!sticker"';
-                            
-                        await sock.sendMessage(sender, { text: helpText });
-                        console.log('✅ Sticker help sent successfully');
+                        console.log('⚠️ Skipping sticker help notification (silent command)');
                     }
                     else if (text === '!help' || text === '!commands') {
                         console.log(`ℹ️ Help command from ${senderName} in ${isGroup ? 'group' : 'private'}`);
