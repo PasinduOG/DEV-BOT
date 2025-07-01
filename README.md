@@ -6,14 +6,15 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 
 ### Core Features
 - **🔐 QR Code Authentication** - Secure WhatsApp Web authentication via QR code
-- **💬 Smart Message Handling** - Responds to commands in both private and group chats
+- **💬 Smart Message Handling** - Responds to commands in both private and group chats with intelligent pattern matching
 - **🎨 Advanced Sticker Creation** - Convert images to WebP stickers with automatic resizing
 - **👥 Group Chat Support** - Full functionality in WhatsApp groups with user mentions
 - **🔄 Session Management** - Automatic session error handling and recovery
 - **📱 Cross-Platform** - Works on Windows, macOS, and Linux
+- **🤖 Flexible Greeting Detection** - Uses regex patterns to detect greetings in natural conversation
 
 ### Commands
-- **`hi` / `hello`** - Get a personalized greeting
+- **`hi` / `hello`** - Get a personalized greeting (supports flexible patterns like "Hi I'm John", "Hello there", etc.)
 - **`!sticker`** - Create stickers from images (see sticker creation methods below)
 - **`!help` / `!commands`** - Display available commands and usage instructions
 - **`!reset`** - Clear corrupted sessions (private chat only, for troubleshooting)
@@ -103,11 +104,17 @@ web-pair/
 ### Basic Commands
 ```
 User: hi
-Bot: Hello! My name is Pasindu Madhuwantha and how can I help you?
+Bot: Hello! My name is DEV~BOT. How can I help you?
+
+User: Hi I'm Pasindu
+Bot: Hello! My name is DEV~BOT. How can I help you?
+
+User: Hello there everyone
+Bot: Hello! My name is DEV~BOT. How can I help you?
 
 User: !help
 Bot: 🤖 Bot Commands:
-     • hi or hello - Get greeting
+     • hi or hello - Get greeting (flexible patterns supported)
      • !sticker - Create sticker from image
      • !help - Show this help menu
      ...

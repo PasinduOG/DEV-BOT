@@ -308,7 +308,10 @@ async function startBot() {
                     console.log(`📩 Message from ${senderName} in ${isGroup ? 'group' : 'private'} (${sender}): ${text}`);
 
                     // Bot commands that work in both private and group chats
-                    if (text === 'hi' || text === '!hi' || text === 'hello' || text === '!hello') {
+                    // Regex pattern to match greetings like "hi", "hello", "hi i'm pasindu", etc.
+                    const greetingPattern = /^(!?)h(i|ello)(\s|$)/i;
+                    
+                    if (greetingPattern.test(text)) {
                         const greeting = isGroup 
                             ? `Hello @${actualSender.split('@')[0]}! My name is DEV~BOT. How can I help you? I'm here to make a smile to u...😊`
                             : 'Hello! My name is DEV~BOT. How can I help you?';
