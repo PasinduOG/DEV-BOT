@@ -35,7 +35,7 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 1. **Clone the repository**
    ```bash
    git clone dev~bot
-   cd dev~bot
+   cd DEV-BOT
    ```
 
 2. **Install dependencies**
