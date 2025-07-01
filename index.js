@@ -43,6 +43,71 @@ let currentSocket = null; // Track current socket instance
 let sessionErrorCount = 0; // Track session errors
 const maxSessionErrors = 10; // Clear sessions after this many errors
 
+// Simplified bad words patterns - focused on most offensive terms only
+const badWordsPatterns = [
+    // Core English profanity - most offensive only
+    /f+[u@*#0o]+c+k+[ings]*/i,          // fuck, fucking, etc.
+    /s+h+[i1!@*#]+t+/i,                 // shit variations
+    /b+[i1!@*#]+t+c+h+/i,               // bitch variations
+    /a+s+s+h+[o0@*#]+l+e+/i,            // asshole variations
+    
+    // Extreme character substitutions for core words only
+    /f[^a-z]*[u@*#0o][^a-z]*c[^a-z]*k/i,    // f___u___c___k with any chars between
+    /s[^a-z]*h[^a-z]*[i1!@*#][^a-z]*t/i,    // s___h___i___t with any chars between
+    
+    // Common bypass techniques for core words
+    /f[\s\-_\.\,\!\?\;\:]*u[\s\-_\.\,\!\?\;\:]*c[\s\-_\.\,\!\?\;\:]*k/i,  // f.u.c.k, f-u-c-k
+    /s[\s\-_\.\,\!\?\;\:]*h[\s\-_\.\,\!\?\;\:]*i[\s\-_\.\,\!\?\;\:]*t/i,  // s.h.i.t, s-h-i-t
+    
+    // Core Sinhala bad words - most offensive only
+    /p+[a@*#4]+k+[o0@*#]+/i,            // pako variations
+    /w+[e3@*#]+s+[i1!@*#]+y+[a@*#4]+/i, // wesiya variations
+    /h+[u@*#0o]+t+t+[ho0@*#]+/i,        // hutto variations
+    /b+[a@*#4]+l+l+[a@*#4]+/i,          // balla variations
+    
+    // Only most obvious acronyms
+    /\bwtf\b/i,                         // what the fuck
+    /\bstfu\b/i,                        // shut the fuck up
+    
+    // Reverse writing for core words only
+    /kcuf/i,                            // fuck reversed
+    /tihs/i,                            // shit reversed
+];
+
+// Simplified function to check bad words - reduced sensitivity
+function containsBadWords(text) {
+    if (!text || typeof text !== 'string') return false;
+    
+    // Basic text normalization only
+    const originalText = text.toLowerCase();
+    const cleanText = text.toLowerCase()
+        .replace(/[\s\-_\.\,\!\?\;\:]/g, '')  // Remove basic punctuation
+        .replace(/[0-9]/g, match => {  // Basic number to letter conversion
+            const numMap = {'0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's'};
+            return numMap[match] || match;
+        });
+    
+    // Test only against core patterns
+    const textsToCheck = [originalText, cleanText];
+    
+    // Check against simplified regex patterns
+    for (const pattern of badWordsPatterns) {
+        for (const textVariant of textsToCheck) {
+            if (pattern.test(textVariant)) {
+                return true;
+            }
+        }
+    }
+    
+    // Simple scattered check for only the worst words
+    const scatteredPatterns = [
+        /f.*u.*c.*k/i,      // f...u...c...k
+        /s.*h.*i.*t/i,      // s...h...i...t
+    ];
+    
+    return scatteredPatterns.some(pattern => pattern.test(originalText));
+}
+
 // Function to handle session errors
 async function handleSessionError() {
     sessionErrorCount++;
@@ -344,6 +409,116 @@ async function startBot() {
                             
                         await sock.sendMessage(sender, { text: helpMessage });
                         console.log('✅ Help message sent successfully');
+                    }
+                    // Handle invalid commands (starts with ! but not a valid command)
+                    else if (text.startsWith('!') && text !== '!sticker') {
+                        const senderName = msg.pushName || 'Unknown';
+                        const actualSender = isGroup ? msg.key.participant : sender;
+                        
+                        console.log(`❌ Invalid command "${text}" from ${senderName}, sending video response...`);
+                        
+                        try {
+                            // Import fs for reading the video file
+                            const fs = await import('fs');
+                            const path = await import('path');
+                            
+                            // Read the video file
+                            const videoPath = path.join(process.cwd(), 'src', 'hey.mp4');
+                            
+                            if (!fs.existsSync(videoPath)) {
+                                throw new Error('Video file not found');
+                            }
+                            
+                            const videoBuffer = fs.readFileSync(videoPath);
+                            
+                            // Send the video with a caption
+                            const videoCaption = isGroup 
+                                ? `කෙලෝ ගන්න එපා මට කියාලා හොදේ! @${actualSender.split('@')[0]}! \n\n*කුණුහර්ප තහනම් හොදින් මතක තියාගන්න ඕන!*.........😒 Try *!help* or *!commands* to see available commands!`
+                                : `කෙලෝ ගන්න එපා මට කියාලා හොදේ! \n\n*කුණුහර්ප තහනම් හොදින් මතක තියාගන්න ඕන!*..........😒 Try *!help* or *!commands* to see available commands!`;
+                                
+                            const videoOptions = {
+                                video: videoBuffer,
+                                caption: videoCaption,
+                                mimetype: 'video/mp4'
+                            };
+                            
+                            if (isGroup) {
+                                videoOptions.mentions = [actualSender];
+                            }
+                            
+                            await sock.sendMessage(sender, videoOptions);
+                            console.log('✅ Invalid command video response sent successfully');
+                            
+                        } catch (videoError) {
+                            console.error('❌ Error sending video for invalid command:', videoError.message);
+                            
+                            // Fallback to text message if video fails
+                            const fallbackText = isGroup
+                                ? `@${actualSender.split('@')[0]} *කුණුහර්ප තහනම් හොදින් මතක තියාගන්න ඕන!*.........😒 \n\nTry *!help* or *!commands* to see available commands.`
+                                : `*කුණුහර්ප තහනම් හොදින් මතක තියාගන්න ඕන!*.........😒 \n\nTry *!help* or *!commands* to see available commands.`;
+                                
+                            const fallbackOptions = isGroup
+                                ? { text: fallbackText, mentions: [actualSender] }
+                                : { text: fallbackText };
+                                
+                            await sock.sendMessage(sender, fallbackOptions);
+                            console.log('✅ Fallback text response sent for invalid command');
+                        }
+                    }
+                    // Handle bad words detection
+                    else if (containsBadWords(text)) {
+                        const senderName = msg.pushName || 'Unknown';
+                        const actualSender = isGroup ? msg.key.participant : sender;
+                        
+                        console.log(`🚫 Bad words detected from ${senderName}: "${text}"`);
+                        
+                        try {
+                            // Import fs for reading the video file
+                            const fs = await import('fs');
+                            const path = await import('path');
+                            
+                            // Read the video file
+                            const videoPath = path.join(process.cwd(), 'src', 'hey.mp4');
+                            
+                            if (!fs.existsSync(videoPath)) {
+                                throw new Error('Video file not found');
+                            }
+                            
+                            const videoBuffer = fs.readFileSync(videoPath);
+                            
+                            // Send the video with a caption about language
+                            const videoCaption = isGroup 
+                                ? `කෙලෝ ගන්න එපා මට කියාලා හොදේ! @${actualSender.split('@')[0]}! \n\n*කුණුහර්ප තහනම් හොදින් මතක තියාගන්න ඕන!*.........😒\n\nPlease use appropriate language! Let's keep our conversation respectful. 🙏`
+                                : `කෙලෝ ගන්න එපා මට කියාලා හොදේ! \n\n*කුණුහර්ප තහනම් හොදින් මතක තියාගන්න ඕන!*.........😒\n\nPlease use appropriate language! Let's keep our conversation respectful. 🙏`;
+                                
+                            const videoOptions = {
+                                video: videoBuffer,
+                                caption: videoCaption,
+                                mimetype: 'video/mp4'
+                            };
+                            
+                            if (isGroup) {
+                                videoOptions.mentions = [actualSender];
+                            }
+                            
+                            await sock.sendMessage(sender, videoOptions);
+                            console.log('✅ Bad words warning video sent successfully');
+                            
+                        } catch (videoError) {
+                            console.error('❌ Error sending video for bad words:', videoError.message);
+                            
+                            // Fallback to text message if video fails
+                            const fallbackText = isGroup
+                                ? `@${actualSender.split('@')[0]} *මීට වැඩිය හොදායි*.........😒\n\nPlease use appropriate language! Let's keep our conversation respectful. 🙏`
+                                : `*මීට වැඩිය හොදායි*.........😒\n\nPlease use appropriate language! Let's keep our conversation respectful. 🙏`;
+                                
+                            const fallbackOptions = isGroup
+                                ? { text: fallbackText, mentions: [actualSender] }
+                                : { text: fallbackText };
+                                
+                            await sock.sendMessage(sender, fallbackOptions);
+                            console.log('✅ Fallback bad words warning sent');
+                        }
                     }
                 }
 

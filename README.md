@@ -12,12 +12,20 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 - **🔄 Session Management** - Automatic session error handling and recovery
 - **📱 Cross-Platform** - Works on Windows, macOS, and Linux
 - **🤖 Flexible Greeting Detection** - Uses regex patterns to detect greetings in natural conversation
+- **🎥 Video Response System** - Sends video responses for invalid commands and inappropriate content
+- **🛡️ Smart Content Filtering** - Focused bad word detection with minimal false positives
 
 ### Commands
 - **`hi` / `hello`** - Get a personalized greeting (supports flexible patterns like "Hi I'm John", "Hello there", etc.)
 - **`!sticker`** - Create stickers from images (see sticker creation methods below)
 - **`!help` / `!commands`** - Display available commands and usage instructions
 - **`!reset`** - Clear corrupted sessions (private chat only, for troubleshooting)
+
+### Smart Response System
+- **Invalid Command Detection** - Automatically detects and responds to invalid commands (messages starting with `!` that aren't recognized)
+- **Content Filtering** - Detects inappropriate language and responds with warnings
+- **Video Responses** - Uses `src/hey.mp4` for both invalid commands and content filtering responses
+- **Fallback Messaging** - Text responses when video sending fails
 
 ### Sticker Creation Methods
 1. **Direct Upload**: Send an image with `!sticker` as the caption
@@ -49,7 +57,11 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
    npm start
    ```
 
-4. **Authenticate with WhatsApp**
+4. **Ensure media files are present**
+   - Verify `src/hey.mp4` exists for video responses
+   - This file is used for invalid commands and content filtering responses
+
+5. **Authenticate with WhatsApp**
    - Scan the QR code displayed in terminal with your WhatsApp mobile app
    - Go to WhatsApp → Settings → Linked Devices → Link a Device
    - Scan the QR code to authenticate
@@ -78,6 +90,10 @@ const maxSessionErrors = 10;           // Clear sessions after this many errors
 // Sticker settings
 const stickerSize = 512;               // Sticker dimensions (512x512)
 const stickerQuality = 80;             // WebP quality (0-100)
+
+// Content filtering settings
+const badWordsPatterns = [...];        // Array of regex patterns for content filtering
+const videoResponsePath = 'src/hey.mp4'; // Video file for responses
 ```
 
 ### Browser Configuration
@@ -89,11 +105,13 @@ The bot identifies itself as:
 ## 💾 File Structure
 
 ```
-web-pair/
+DEV-BOT/
 ├── index.js              # Main bot logic and event handlers
 ├── clear-sessions.js     # Utility script for manual session cleanup
 ├── package.json          # Project dependencies and scripts
 ├── README.md            # This documentation
+├── src/                 # Media files
+│   └── hey.mp4          # Video file for responses (invalid commands & content filtering)
 └── auth/               # WhatsApp authentication data (auto-generated)
     ├── creds.json      # Authentication credentials
     └── session-*.json  # Session files (auto-managed)
@@ -118,6 +136,12 @@ Bot: 🤖 Bot Commands:
      • !sticker - Create sticker from image
      • !help - Show this help menu
      ...
+
+User: !invalidcommand
+Bot: [Sends hey.mp4 video] + "❌ Invalid command! Use !help to see available commands."
+
+User: [inappropriate content]
+Bot: [Sends hey.mp4 video] + "⚠️ Please maintain respectful language in our chat."
 ```
 
 ### Sticker Creation
@@ -187,6 +211,12 @@ Error: Stream Errored (conflict)
 - Verify WhatsApp connection status
 - Try `!reset` to clear sessions
 
+**5. Video Responses Not Working**
+- Ensure `src/hey.mp4` file exists in the project directory
+- Check video file permissions and size
+- Verify Sharp installation for video processing
+- Monitor console logs for video sending errors
+
 ### Error Codes
 
 | Error | Cause | Solution |
@@ -195,6 +225,8 @@ Error: Stream Errored (conflict)
 | `Stream Errored (conflict)` | Multiple sessions | Close other WhatsApp Web tabs |
 | `Connection timeout` | Network issues | Check internet connection |
 | `Failed to decrypt message` | Session mismatch | Clear auth data and re-authenticate |
+| `Video sending failed` | Media file issues | Check `src/hey.mp4` exists and permissions |
+| `Content filtering error` | Pattern matching issues | Check console logs for details |
 
 ## 🔒 Security Features
 
@@ -203,6 +235,34 @@ Error: Stream Errored (conflict)
 - **Session Isolation**: Each bot instance maintains separate authentication
 - **Auto-Call Rejection**: Automatically rejects incoming calls to prevent issues
 - **Rate Limiting**: Built-in delays and retry logic to prevent spam
+- **Content Filtering**: Smart detection of inappropriate language with focused filtering to minimize false positives
+- **Command Validation**: Invalid commands are detected and handled gracefully
+
+## 🛡️ Content Filtering System
+
+### Smart Bad Word Detection
+The bot includes a focused content filtering system designed to maintain respectful conversations while minimizing false positives:
+
+- **Targeted Detection**: Focuses only on the most offensive and clearly inappropriate terms
+- **Multi-Language Support**: Detects inappropriate content in both English and Sinhala
+- **Bypass Prevention**: Handles common obfuscation techniques (character substitution, spacing, etc.)
+- **Video Response**: Responds with `src/hey.mp4` video plus warning message
+- **Minimal False Positives**: Carefully tuned to avoid flagging normal conversation
+
+### Filtering Features
+- **Core Profanity**: Detects major offensive words with variations
+- **Character Substitution**: Handles `@`, `*`, `#`, numbers, and other replacements
+- **Spacing Bypass**: Detects words split with spaces, dashes, or punctuation
+- **Leetspeak**: Basic number-to-letter substitution detection
+- **Acronyms**: Common inappropriate acronyms (WTF, STFU)
+- **Reverse Text**: Basic reverse writing detection
+
+### Response Behavior
+1. **Detection**: When inappropriate content is detected
+2. **Video Response**: Sends `hey.mp4` video file
+3. **Warning Message**: Adds appropriate warning text
+4. **Graceful Fallback**: Falls back to text-only warning if video fails
+5. **Console Logging**: Logs detection events for monitoring
 
 ## 🌟 Advanced Features
 
