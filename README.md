@@ -13,7 +13,7 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 - **📱 Cross-Platform** - Works on Windows, macOS, and Linux
 
 ### Commands
-- **`hi` / `!hello`** - Get a personalized greeting
+- **`hi` / `hello`** - Get a personalized greeting
 - **`!sticker`** - Create stickers from images (see sticker creation methods below)
 - **`!help` / `!commands`** - Display available commands and usage instructions
 - **`!reset`** - Clear corrupted sessions (private chat only, for troubleshooting)
@@ -107,7 +107,7 @@ Bot: Hello! My name is Pasindu Madhuwantha and how can I help you?
 
 User: !help
 Bot: 🤖 Bot Commands:
-     • hi or !hello - Get greeting
+     • hi or hello - Get greeting
      • !sticker - Create sticker from image
      • !help - Show this help menu
      ...

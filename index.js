@@ -308,7 +308,7 @@ async function startBot() {
                     console.log(`📩 Message from ${senderName} in ${isGroup ? 'group' : 'private'} (${sender}): ${text}`);
 
                     // Bot commands that work in both private and group chats
-                    if (text === 'hi' || text === '!hello') {
+                    if (text === 'hi' || text === '!hi' || text === 'hello' || text === '!hello') {
                         const greeting = isGroup 
                             ? `Hello @${actualSender.split('@')[0]}! My name is DEV~BOT. How can I help you? I'm here to make a smile to u...😊`
                             : 'Hello! My name is DEV~BOT. How can I help you?';
@@ -330,7 +330,7 @@ async function startBot() {
                     }
                     else if (text === '!help' || text === '!commands') {
                         const helpMessage = `🤖 *Bot Commands:*\n\n` +
-                            `• *!hi* or *!hello* - Get greeting\n` +
+                            `• *!hi | Hi* or *!hello | Hello* - Get greeting\n` +
                             `• *!sticker* - Create sticker from image\n` +
                             `• *!help* - Show this help menu\n` +
                             `${!isGroup ? `• *!reset* - Clear sessions (private only)\n` : ''}` +
