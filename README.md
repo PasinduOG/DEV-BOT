@@ -17,10 +17,12 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 
 ### Commands
 - **`hi` / `hello`** - Get a personalized greeting (supports flexible patterns like "Hi I'm John", "Hello there", etc.)
-- **`!sticker`** - Create stickers from images (see sticker creation methods below)
+- **`!sticker`** - Create stickers from images (silent command - no help text response)
 - **`!help` / `!commands`** - Display available commands and usage instructions
 - **`!about`** - Get detailed information about bot features, terms & conditions, and developer details
 - **`!reset`** - Fix session errors and connectivity issues (private chat only)
+
+**💡 Pro Tip**: You can test private chat commands by messaging your own number. The bot intelligently distinguishes between user commands and bot responses to prevent infinite loops.
 
 ### Smart Response System
 - **Invalid Command Detection** - Automatically detects and responds to invalid commands (messages starting with `!` that aren't recognized)
@@ -31,7 +33,8 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 ### Sticker Creation Methods
 1. **Direct Upload**: Send an image with `!sticker` as the caption
 2. **Reply Method**: Reply to any image message with `!sticker`
-3. **Supported Formats**: JPG, PNG, GIF, WebP, and other common image formats
+3. **Silent Operation**: The `!sticker` command produces no response text - only functional when used with images
+4. **Supported Formats**: JPG, PNG, GIF, WebP, and other common image formats
 
 ## 🛠️ Installation
 
@@ -93,7 +96,7 @@ const stickerSize = 512;               // Sticker dimensions (512x512)
 const stickerQuality = 80;             // WebP quality (0-100)
 
 // Content filtering settings
-const badWordsPatterns = [...];        // Array of regex patterns for content filtering
+const badWordsPatterns = [...];        // Ultra-simplified array of exact word patterns only
 const videoResponsePath = 'src/hey.mp4'; // Video file for responses
 ```
 
@@ -155,9 +158,15 @@ Bot: [Sends hey.mp4 video] + "⚠️ Please maintain respectful language in our 
 
 ### Sticker Creation
 ```
+User: !sticker
+Bot: [No response - silent command]
+
 Method 1: Send image with caption "!sticker"
-Method 2: Reply to any image with "!sticker"
 Bot: 🎨 Creating sticker... Please wait!
+Bot: [Sends converted WebP sticker]
+
+Method 2: Reply to any image with "!sticker"
+Bot: 🎨 Creating sticker from replied image... Please wait!
 Bot: [Sends converted WebP sticker]
 ```
 
@@ -258,21 +267,20 @@ Error: Stream Errored (conflict)
 ## 🛡️ Content Filtering System
 
 ### Smart Bad Word Detection
-The bot includes a focused content filtering system designed to maintain respectful conversations while minimizing false positives:
+The bot includes an ultra-simplified content filtering system designed to maintain respectful conversations while minimizing false positives:
 
-- **Targeted Detection**: Focuses only on the most offensive and clearly inappropriate terms
+- **Ultra-Focused Detection**: Only detects the most explicit and clearly offensive terms
+- **Exact Word Matching**: Uses precise word boundaries to prevent false positives
 - **Multi-Language Support**: Detects inappropriate content in both English and Sinhala
-- **Bypass Prevention**: Handles common obfuscation techniques (character substitution, spacing, etc.)
 - **Video Response**: Responds with `src/hey.mp4` video plus warning message
-- **Minimal False Positives**: Carefully tuned to avoid flagging normal conversation
+- **Minimal False Positives**: Extremely conservative approach to avoid flagging normal conversation
 
 ### Filtering Features
-- **Core Profanity**: Detects major offensive words with variations
-- **Character Substitution**: Handles `@`, `*`, `#`, numbers, and other replacements
-- **Spacing Bypass**: Detects words split with spaces, dashes, or punctuation
-- **Leetspeak**: Basic number-to-letter substitution detection
-- **Acronyms**: Common inappropriate acronyms (WTF, STFU)
-- **Reverse Text**: Basic reverse writing detection
+- **Core Profanity**: Only the most explicit terms (fuck, fucking, bitch)
+- **Sinhala Terms**: Most offensive Sinhala words (pako, wesiya, hutto)
+- **Clear Acronyms**: Only obvious inappropriate acronyms (WTF)
+- **Exact Matching**: Uses word boundaries (`\b`) for precise detection
+- **No Complex Processing**: Simplified to reduce false positive rates
 
 ### Response Behavior
 1. **Detection**: When inappropriate content is detected
