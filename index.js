@@ -138,15 +138,25 @@ async function handleSessionError() {
                 });
             }
             
+            // Cleanup current connection before restart
+            cleanupConnection();
+            
             // Restart connection
             setTimeout(() => {
                 console.log('🔄 Restarting bot with cleared sessions...');
                 startBot();
-            }, 3000);
+            }, 5000); // Increased delay to ensure cleanup
             
         } catch (error) {
             console.error('❌ Error clearing sessions:', error.message);
         }
+    } else {
+        // For fewer errors, just cleanup and restart without clearing files
+        console.log('🔄 Restarting connection due to session error...');
+        cleanupConnection();
+        setTimeout(() => {
+            startBot();
+        }, 3000);
     }
 }
 
@@ -345,6 +355,12 @@ async function startBot() {
                     return;
                 }
 
+                // Additional session validation
+                if (!msg.key.remoteJid) {
+                    console.log('⚠️ Skipping message with invalid remoteJid');
+                    return;
+                }
+
                 const sender = msg.key.remoteJid;
                 if (!sender) return;
 
@@ -371,12 +387,14 @@ async function startBot() {
                     const actualSender = isGroup ? msg.key.participant : sender;
 
                     console.log(`📩 Message from ${senderName} in ${isGroup ? 'group' : 'private'} (${sender}): ${text}`);
+                    console.log(`🔍 Debug - isGroup: ${isGroup}, isPrivate: ${isPrivate}, command: ${text}`);
 
                     // Bot commands that work in both private and group chats
                     // Regex pattern to match greetings like "hi", "hello", "hi i'm pasindu", etc.
                     const greetingPattern = /^(!?)h(i|ello)(\s|$)/i;
                     
                     if (greetingPattern.test(text)) {
+                        console.log(`👋 Greeting detected from ${senderName}`);
                         const greeting = isGroup 
                             ? `Hello @${actualSender.split('@')[0]}! My name is DEV~BOT. How can I help you? I'm here to make a smile to u...😊`
                             : 'Hello! My name is DEV~BOT. How can I help you?';
@@ -389,6 +407,7 @@ async function startBot() {
                         console.log('✅ Reply sent successfully');
                     } 
                     else if (text === '!sticker') {
+                        console.log(`🎨 Sticker help command from ${senderName}`);
                         const helpText = isGroup
                             ? '🎨 To make a sticker in groups:\n1. Send an image with "!sticker" as caption\n2. Or reply to an image with "!sticker"\n3. Use @botname !sticker for direct commands'
                             : '🎨 To make a sticker:\n1. Send an image with "!sticker" as caption\n2. Or reply to an image with "!sticker"';
@@ -397,21 +416,72 @@ async function startBot() {
                         console.log('✅ Sticker help sent successfully');
                     }
                     else if (text === '!help' || text === '!commands') {
-                        const helpMessage = `🤖 *Bot Commands:*\n\n` +
-                            `• *!hi | Hi* or *!hello | Hello* - Get greeting\n` +
+                        console.log(`ℹ️ Help command from ${senderName} in ${isGroup ? 'group' : 'private'}`);
+                        const helpMessage = `🤖 *DEV~BOT Commands:*\n\n` +
+                            `• *Hi* or *Hello* - Get greeting (flexible patterns)\n` +
                             `• *!sticker* - Create sticker from image\n` +
-                            `• *!help* - Show this help menu\n` +
-                            `${!isGroup ? `• *!reset* - Clear sessions (private only)\n` : ''}` +
+                            `• *!help* or *!commands* - Show this help menu\n` +
+                            `• *!about* - Bot info, features & developer details\n` +
+                            `${!isGroup ? `• *!reset* - Fix session errors (private only)\n` : ''}` +
                             `\n📱 *Sticker Creation:*\n` +
                             `1. Send image with "!sticker" caption\n` +
                             `2. Reply to image with "!sticker"\n\n` +
-                            `${isGroup ? '💡 *Group Tip:* Bot works in groups too!' : '💡 *Tip:* All commands work in private chat!'}`;
+                            `${isGroup ? '💡 *Group Tip:* DEV~BOT works in groups too!' : '💡 *Tip:* All DEV~BOT commands work in private chat!'}`;
                             
                         await sock.sendMessage(sender, { text: helpMessage });
                         console.log('✅ Help message sent successfully');
                     }
+                    else if (text === '!about') {
+                        console.log(`ℹ️ About command from ${senderName}`);
+                        const aboutMessage = `🤖 *DEV~BOT - About*\n\n` +
+                            `*✨ Features:*\n` +
+                            `• 🎨 Advanced sticker creation from any image\n` +
+                            `• 🤖 Smart greeting detection with flexible patterns\n` +
+                            `• 🛡️ Intelligent content filtering system\n` +
+                            `• 🎥 Video responses for invalid commands\n` +
+                            `• 👥 Full group chat support with mentions\n` +
+                            `• 🔄 Advanced session management & auto-recovery\n` +
+                            `• 📱 Cross-platform compatibility\n\n` +
+                            `*⚖️ Terms & Conditions:*\n` +
+                            `• For educational and personal use only\n` +
+                            `• Respect WhatsApp's Terms of Service\n` +
+                            `• Use appropriate language in conversations\n` +
+                            `• No spam or misuse of bot features\n` +
+                            `• Developer not responsible for misuse\n\n` +
+                            `*👨‍💻 Developer:*\n` +
+                            `• Name: Pasindu Madhuwantha (Pasindu OG)\n` +
+                            `• GitHub: @PasinduOG\n` +
+                            `• Project: Open Source WhatsApp Bot\n` +
+                            `• Built with: Node.js + Baileys + Sharp\n\n` +
+                            `*🔗 Links:*\n` +
+                            `• GitHub: github.com/PasinduOG\n` +
+                            `• Repository: github.com/PasinduOG/DEV-BOT\n\n` +
+                            `*Made with ❤️ for the community!*`;
+                            
+                        await sock.sendMessage(sender, { text: aboutMessage });
+                        console.log('✅ About message sent successfully');
+                    }
+                    else if (text === '!reset') {
+                        if (isPrivate) {
+                            console.log(`🔧 Manual session reset requested by ${senderName} in private chat`);
+                            
+                            await sock.sendMessage(sender, { 
+                                text: '🔄 *DEV~BOT Session Reset*\n\nClearing session data and reconnecting...\nThis may take a few moments.\n\n⚠️ The bot will restart automatically.' 
+                            });
+                            
+                            // Force session error handling
+                            sessionErrorCount = maxSessionErrors;
+                            handleSessionError();
+                        } else {
+                            console.log(`❌ Reset command attempted in group by ${senderName}, denying...`);
+                            await sock.sendMessage(sender, { 
+                                text: `@${actualSender.split('@')[0]} ❌ The *!reset* command is only available in private chat for security reasons.\n\nPlease message me privately to use this command.`,
+                                mentions: [actualSender]
+                            });
+                        }
+                    }
                     // Handle invalid commands (starts with ! but not a valid command)
-                    else if (text.startsWith('!') && text !== '!sticker') {
+                    else if (text.startsWith('!') && text !== '!sticker' && text !== '!about' && text !== '!help' && text !== '!commands' && text !== '!reset') {
                         const senderName = msg.pushName || 'Unknown';
                         const actualSender = isGroup ? msg.key.participant : sender;
                         
@@ -737,16 +807,30 @@ async function startBot() {
                 console.error('❌ Error processing message:', error.message);
                 console.error('📋 Error details:', error.stack);
 
+                // Handle specific session errors
+                if (error.message.includes('Decrypted message with closed session') ||
+                    error.message.includes('Bad MAC') ||
+                    error.message.includes('decrypt')) {
+                    console.log('🔧 Session decrypt error in message processing, handling...');
+                    handleSessionError();
+                    return; // Don't try to send error message with broken session
+                }
+
                 // Try to send an error message to the sender if possible
                 try {
                     const sender = messages[0]?.key?.remoteJid;
-                    if (sender) {
+                    if (sender && currentSocket) {
                         await sock.sendMessage(sender, {
                             text: 'Sorry, I encountered an error processing your message. Please try again later.'
                         });
                     }
                 } catch (sendError) {
                     console.error('❌ Failed to send error message:', sendError.message);
+                    // If we can't send error message, it might be a session issue
+                    if (sendError.message.includes('session') || sendError.message.includes('decrypt')) {
+                        console.log('🔧 Session error while sending error message, handling...');
+                        handleSessionError();
+                    }
                 }
             }
         });
@@ -758,25 +842,44 @@ async function startBot() {
             // Handle session-related errors
             if (error.message.includes('Bad MAC') || 
                 error.message.includes('decrypt') || 
-                error.message.includes('session')) {
+                error.message.includes('session') ||
+                error.message.includes('Decrypted message with closed session')) {
                 console.log('🔧 Detected session error, handling...');
                 handleSessionError();
             }
         });
 
-        // Handle session errors and decryption issues
+        // Enhanced session error handling
         sock.ev.on('CB:message,type:text', (node) => {
-            console.log('🔍 Raw message node received:', JSON.stringify(node, null, 2));
+            if (node && node.attrs && node.attrs.type === 'error') {
+                console.log('⚠️ Message error node received:', JSON.stringify(node, null, 2));
+                if (node.content && node.content.toString().includes('decrypt')) {
+                    console.log('🔧 Decrypt error detected, handling session error...');
+                    handleSessionError();
+                }
+            }
         });
 
         // Handle session errors specifically
         sock.ev.on('CB:iq,type:error', (node) => {
             console.log('⚠️ IQ Error received:', JSON.stringify(node, null, 2));
+            if (node && node.content && node.content.toString().includes('session')) {
+                console.log('🔧 Session IQ error detected, handling...');
+                handleSessionError();
+            }
         });
 
         // Enhanced error handling for session issues
         sock.ev.on('messaging-history.set', ({ isLatest }) => {
             console.log('📚 Message history set, isLatest:', isLatest);
+        });
+
+        // Add connection state monitoring
+        sock.ev.on('connection.update', ({ connection, lastDisconnect, qr, receivedPendingNotifications }) => {
+            if (receivedPendingNotifications) {
+                console.log('📨 Received pending notifications, session might be unstable');
+                // Don't immediately handle as error, but monitor
+            }
         });
 
     } catch (error) {

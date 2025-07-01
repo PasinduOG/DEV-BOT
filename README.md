@@ -19,7 +19,8 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 - **`hi` / `hello`** - Get a personalized greeting (supports flexible patterns like "Hi I'm John", "Hello there", etc.)
 - **`!sticker`** - Create stickers from images (see sticker creation methods below)
 - **`!help` / `!commands`** - Display available commands and usage instructions
-- **`!reset`** - Clear corrupted sessions (private chat only, for troubleshooting)
+- **`!about`** - Get detailed information about bot features, terms & conditions, and developer details
+- **`!reset`** - Fix session errors and connectivity issues (private chat only)
 
 ### Smart Response System
 - **Invalid Command Detection** - Automatically detects and responds to invalid commands (messages starting with `!` that aren't recognized)
@@ -135,6 +136,14 @@ Bot: 🤖 Bot Commands:
      • hi or hello - Get greeting (flexible patterns supported)
      • !sticker - Create sticker from image
      • !help - Show this help menu
+     • !about - Bot info, features & developer details
+     ...
+
+User: !about
+Bot: 🤖 DEV~BOT - About
+     ✨ Features: Advanced sticker creation, smart content filtering...
+     👨‍💻 Developer: Pasindu Madhuwantha (Pasindu OG)
+     GitHub: @PasinduOG
      ...
 
 User: !invalidcommand
@@ -211,7 +220,14 @@ Error: Stream Errored (conflict)
 - Verify WhatsApp connection status
 - Try `!reset` to clear sessions
 
-**5. Video Responses Not Working**
+**5. Private Chat Commands Not Working**
+- Ensure you're messaging the bot directly (not in a group)
+- Check that the bot shows as "online" or "last seen recently"
+- Verify the phone number used to authenticate the bot
+- Try restarting the bot with `npm start`
+- Check console logs for debugging information
+
+**6. Video Responses Not Working**
 - Ensure `src/hey.mp4` file exists in the project directory
 - Check video file permissions and size
 - Verify Sharp installation for video processing
@@ -227,6 +243,7 @@ Error: Stream Errored (conflict)
 | `Failed to decrypt message` | Session mismatch | Clear auth data and re-authenticate |
 | `Video sending failed` | Media file issues | Check `src/hey.mp4` exists and permissions |
 | `Content filtering error` | Pattern matching issues | Check console logs for details |
+| `Commands not working in private` | Authentication/connection issues | Restart bot, check phone number, verify connection |
 
 ## 🔒 Security Features
 
