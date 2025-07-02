@@ -59,8 +59,8 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/PasinduOG/DEV-BOT.git
-   cd DEV-BOT
+   git clone https://github.com/PasinduOG/MASTER-CHIEF.git
+   cd MASTER-CHIEF
    ```
 
 2. **Install dependencies**
@@ -159,7 +159,7 @@ The bot identifies itself as:
 ## 💾 File Structure
 
 ```
-DEV-BOT/
+MASTER-CHIEF/
 ├── index.js              # Main bot logic with advanced session management
 ├── clear-sessions.js     # Basic session cleanup utility
 ├── fix-sessions.js       # Quick session fix script (NEW)
