@@ -122,7 +122,7 @@ async function sendStatusNotification(status, socket = null) {
 
         if (status === 'online') {
             emoji = '🟢';
-            message = `${emoji} *DEV~BOT is Now Online*\n\n` +
+            message = `${emoji} *MASTER-CHIEF is Now Online*\n\n` +
                      `✅ *Status:* Connected to WhatsApp\n` +
                      `🕐 *Time:* ${timestamp}\n` +
                      `🤖 *System:* All features operational\n` +
@@ -130,7 +130,7 @@ async function sendStatusNotification(status, socket = null) {
                      `*Ready to serve! Send commands to interact.*`;
         } else if (status === 'offline') {
             emoji = '🔴';
-            message = `${emoji} *DEV~BOT is Now Offline*\n\n` +
+            message = `${emoji} *MASTER-CHIEF is Now Offline*\n\n` +
                      `⏹️ *Status:* Disconnected from WhatsApp\n` +
                      `🕐 *Time:* ${timestamp}\n` +
                      `🛑 *System:* Bot stopped\n` +
@@ -573,7 +573,7 @@ async function startBot() {
                 if (msg.key.fromMe) {
                     // Check if this is likely a bot response by looking for bot indicators
                     const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-                    const isBotResponse = text.includes('DEV~BOT') || 
+                    const isBotResponse = text.includes('MASTER-CHIEF') || 
                                         text.includes('✅') || 
                                         text.includes('❌') || 
                                         text.includes('🎨') || 
@@ -663,8 +663,8 @@ async function startBot() {
                     if (greetingPattern.test(text)) {
                         console.log(`👋 Greeting detected from ${senderName}`);
                         const greeting = isGroup 
-                            ? `Hello @${actualSender.split('@')[0]}! My name is DEV~BOT. How can I help you? I'm here to make a smile to u...😊`
-                            : 'Hello! My name is DEV~BOT. How can I help you?';
+                            ? `Hello @${actualSender.split('@')[0]}! My name is MASTER-CHIEF. How can I help you? I'm here to make a smile to u...😊`
+                            : 'Hello! My name is MASTER-CHIEF. How can I help you?';
                         
                         const messageOptions = isGroup 
                             ? { text: greeting, mentions: [actualSender] }
@@ -679,7 +679,7 @@ async function startBot() {
                     }
                     else if (text === '!help' || text === '!commands') {
                         console.log(`ℹ️ Help command from ${senderName} in ${isGroup ? 'group' : 'private'}`);
-                        const helpMessage = `🤖 *DEV~BOT Commands:*\n\n` +
+                        const helpMessage = `🤖 *MASTER-CHIEF Commands:*\n\n` +
                             `• *Hi* or *Hello* - Get greeting (flexible patterns)\n` +
                             `• *!sticker* - Create sticker from image\n` +
                             `• *!help* or *!commands* - Show this help menu\n` +
@@ -689,14 +689,14 @@ async function startBot() {
                             `\n📱 *Sticker Creation:*\n` +
                             `1. Send image with "!sticker" caption\n` +
                             `2. Reply to image with "!sticker"\n\n` +
-                            `${isGroup ? '💡 *Group Tip:* DEV~BOT works in groups too!' : '💡 *Tip:* All DEV~BOT commands work in private chat!'}`;
+                            `${isGroup ? '💡 *Group Tip:* MASTER-CHIEF works in groups too!' : '💡 *Tip:* All MASTER-CHIEF commands work in private chat!'}`;
                             
                         await sock.sendMessage(sender, { text: helpMessage });
                         console.log('✅ Help message sent successfully');
                     }
                     else if (text === '!about') {
                         console.log(`ℹ️ About command from ${senderName}`);
-                        const aboutMessage = `🤖 *DEV~BOT - About*\n\n` +
+                        const aboutMessage = `🤖 *MASTER-CHIEF - About*\n\n` +
                             `*✨ Features:*\n` +
                             `• 🎨 Advanced sticker creation from any image\n` +
                             `• 🤖 Smart greeting detection with flexible patterns\n` +
@@ -743,7 +743,7 @@ async function startBot() {
                             hour12: true
                         });
 
-                        const statusMessage = `🤖 *DEV~BOT Status Report*\n\n` +
+                        const statusMessage = `🤖 *MASTER-CHIEF Status Report*\n\n` +
                             `🟢 *Status:* Online & Active\n` +
                             `⏰ *Uptime:* ${hours}h ${minutes}m ${seconds}s\n` +
                             `🕐 *Current Time:* ${timestamp}\n` +
@@ -763,7 +763,7 @@ async function startBot() {
                             console.log(`🔧 Manual session reset requested by ${senderName} in private chat`);
                             
                             await sock.sendMessage(sender, { 
-                                text: '🔄 *DEV~BOT Session Reset*\n\nClearing session data and reconnecting...\nThis may take a few moments.\n\n⚠️ The bot will restart automatically.' 
+                                text: '🔄 *MASTER-CHIEF Session Reset*\n\nClearing session data and reconnecting...\nThis may take a few moments.\n\n⚠️ The bot will restart automatically.' 
                             });
                             
                             // Force session error handling
@@ -913,7 +913,7 @@ async function startBot() {
                             `• Microservices Architecture\n\n` +
                             
                             `🚀 *Notable Projects:*\n` +
-                            `• DEV~BOT - Advanced WhatsApp Sticker & Command Bot\n` +
+                            `• MASTER-CHIEF - Advanced WhatsApp Sticker & Command Bot\n` +
                             `• YouTube Downloader - Web app for video/audio downloads\n` +
                             `• Express API Projects - Various REST APIs with validation\n` +
                             `• Facebook Video Downloader - Social media content tool\n\n` +

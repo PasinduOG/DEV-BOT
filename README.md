@@ -1,4 +1,4 @@
-# DEV~BOT - Advanced Sticker & Command Bot
+# MASTER-CHIEF - Advanced Sticker & Command Bot
 
 A robust WhatsApp bot built with Baileys that provides interactive features including sticker creation, command responses, and group chat support with advanced session management and error recovery.
 
@@ -181,13 +181,13 @@ DEV-BOT/
 ### Basic Commands
 ```
 User: hi
-Bot: Hello! My name is DEV~BOT. How can I help you?
+Bot: Hello! My name is MASTER-CHIEF. How can I help you?
 
 User: Hi I'm Pasindu
-Bot: Hello! My name is DEV~BOT. How can I help you?
+Bot: Hello! My name is MASTER-CHIEF. How can I help you?
 
 User: Hello there everyone
-Bot: Hello! My name is DEV~BOT. How can I help you?
+Bot: Hello! My name is MASTER-CHIEF. How can I help you?
 
 User: !help
 Bot: 🤖 Bot Commands:
@@ -198,14 +198,14 @@ Bot: 🤖 Bot Commands:
      ...
 
 User: !about
-Bot: 🤖 DEV~BOT - About
+Bot: 🤖 MASTER-CHIEF - About
      ✨ Features: Advanced sticker creation, smart content filtering...
      👨‍💻 Developer: Pasindu Madhuwantha (Pasindu OG)
      GitHub: @PasinduOG
      ...
 
 User: !status
-Bot: 🤖 DEV~BOT Status Report
+Bot: 🤖 MASTER-CHIEF Status Report
      🟢 Status: Online & Active
      ⏰ Uptime: 2h 15m 30s
      📊 Session Errors: 0/10
@@ -229,7 +229,7 @@ The bot automatically sends status messages when configured:
 
 ```
 When Bot Starts:
-🟢 DEV~BOT is Now Online
+🟢 MASTER-CHIEF is Now Online
 
 ✅ Status: Connected to WhatsApp
 🕐 Time: 07/02/2025, 10:30:45 AM
@@ -239,7 +239,7 @@ When Bot Starts:
 Ready to serve! Send commands to interact.
 
 When Bot Stops:
-🔴 DEV~BOT is Now Offline
+🔴 MASTER-CHIEF is Now Offline
 
 ⏹️ Status: Disconnected from WhatsApp
 🕐 Time: 07/02/2025, 02:15:20 PM
