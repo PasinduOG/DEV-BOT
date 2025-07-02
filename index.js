@@ -733,7 +733,7 @@ async function startBot() {
                                 `• Built with: Node.js + Baileys + Sharp\n\n` +
                                 `*🔗 Links:*\n` +
                                 `• GitHub: github.com/PasinduOG\n` +
-                                `• Repository: github.com/PasinduOG/DEV-BOT\n\n` +
+                                `• Repository: github.com/PasinduOG/MASTER-CHIEF\n\n` +
                                 `*Made with ❤️ for the community!*`;
                             
                             // Send the image with about message as caption
@@ -772,7 +772,7 @@ async function startBot() {
                                 `• Built with: Node.js + Baileys + Sharp\n\n` +
                                 `*🔗 Links:*\n` +
                                 `• GitHub: github.com/PasinduOG\n` +
-                                `• Repository: github.com/PasinduOG/DEV-BOT\n\n` +
+                                `• Repository: github.com/PasinduOG/MASTER-CHIEF\n\n` +
                                 `*Made with ❤️ for the community!*`;
                                 
                             await sock.sendMessage(sender, { text: aboutMessage });
