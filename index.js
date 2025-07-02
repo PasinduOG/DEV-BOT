@@ -2,6 +2,8 @@ import * as Baileys from "@whiskeysockets/baileys";
 import P from 'pino';
 import qrcode from 'qrcode-terminal';
 import sharp from 'sharp';
+import dotenv from 'dotenv';
+dotenv.config();
 
 // Function to create sticker from image buffer
 async function createSticker(imageBuffer) {
@@ -11,6 +13,25 @@ async function createSticker(imageBuffer) {
         // Validate buffer
         if (!imageBuffer || imageBuffer.length === 0) {
             throw new Error('Empty or invalid image buffer');
+        }
+
+        // Additional validation for minimum size
+        if (imageBuffer.length < 1000) {
+            throw new Error('Image buffer too small, likely corrupted');
+        }
+
+        // Check if it's a valid image by attempting to get metadata
+        let metadata;
+        try {
+            metadata = await sharp(imageBuffer).metadata();
+            console.log('📊 Image metadata:', {
+                format: metadata.format,
+                width: metadata.width,
+                height: metadata.height,
+                channels: metadata.channels
+            });
+        } catch (metadataError) {
+            throw new Error('Invalid image format or corrupted image data');
         }
 
         // Convert image to WebP format and resize for sticker
@@ -43,6 +64,13 @@ let currentSocket = null; // Track current socket instance
 let sessionErrorCount = 0; // Track session errors
 const maxSessionErrors = 10; // Clear sessions after this many errors
 
+// Bot status notification settings
+// IMPORTANT: Replace with your own phone number to receive online/offline notifications
+// Format: countrycode+number@s.whatsapp.net (e.g., '94760135744@s.whatsapp.net' for +94760135744)
+// Set to null to disable notifications
+const NOTIFICATION_JID = `${process.env.MOBILE}@s.whatsapp.net`; // Replace with your phone number
+let hasSetOnlineStatus = false; // Track if online message was sent
+
 // Ultra-simplified bad words patterns - only the most explicit terms
 const badWordsPatterns = [
     // Only the most explicit English profanity (exact matches)
@@ -70,48 +98,135 @@ function containsBadWords(text) {
     return badWordsPatterns.some(pattern => pattern.test(normalizedText));
 }
 
+// Function to send bot status notifications
+async function sendStatusNotification(status, socket = null) {
+    try {
+        if (!socket || !NOTIFICATION_JID) {
+            console.log('⚠️ Cannot send status notification - socket or JID not available');
+            return;
+        }
+
+        const timestamp = new Date().toLocaleString('en-US', {
+            timeZone: 'Asia/Colombo',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+        });
+
+        let message = '';
+        let emoji = '';
+
+        if (status === 'online') {
+            emoji = '🟢';
+            message = `${emoji} *DEV~BOT is Now Online*\n\n` +
+                     `✅ *Status:* Connected to WhatsApp\n` +
+                     `🕐 *Time:* ${timestamp}\n` +
+                     `🤖 *System:* All features operational\n` +
+                     `🔧 *Session:* Fresh and ready\n\n` +
+                     `*Ready to serve! Send commands to interact.*`;
+        } else if (status === 'offline') {
+            emoji = '🔴';
+            message = `${emoji} *DEV~BOT is Now Offline*\n\n` +
+                     `⏹️ *Status:* Disconnected from WhatsApp\n` +
+                     `🕐 *Time:* ${timestamp}\n` +
+                     `🛑 *System:* Bot stopped\n` +
+                     `💤 *Mode:* Standby\n\n` +
+                     `*Bot will be back soon! Wait for reconnection.*`;
+        } else {
+            emoji = '⚠️';
+            message = `${emoji} *DEV~BOT Status Update*\n\n` +
+                     `📊 *Status:* ${status}\n` +
+                     `🕐 *Time:* ${timestamp}\n` +
+                     `🤖 *System:* Status changed\n\n` +
+                     `*Bot status notification.*`;
+        }
+
+        await socket.sendMessage(NOTIFICATION_JID, { 
+            text: message 
+        });
+        
+        console.log(`${emoji} Status notification sent: Bot is ${status}`);
+    } catch (error) {
+        console.error('❌ Error sending status notification:', error.message);
+    }
+}
+
 // Function to handle session errors
-async function handleSessionError() {
+async function handleSessionError(errorType = 'general') {
     sessionErrorCount++;
-    console.log(`⚠️ Session error count: ${sessionErrorCount}/${maxSessionErrors}`);
+    console.log(`⚠️ Session error count: ${sessionErrorCount}/${maxSessionErrors} (Type: ${errorType})`);
     
-    // Be more aggressive with session clearing for decryption errors
-    if (sessionErrorCount >= 3) { // Reduced from 10 to 3 for faster recovery
-        console.log('🔧 Multiple session errors detected. Clearing sessions and reconnecting...');
+    // Be extremely aggressive with Bad MAC errors - clear immediately
+    const isBadMACError = errorType === 'bad_mac' || errorType.includes('Bad MAC');
+    const shouldClearImmediately = isBadMACError || sessionErrorCount >= 2; // Reduced from 3 to 2
+    
+    if (shouldClearImmediately) {
+        console.log(`🔧 ${isBadMACError ? 'Bad MAC detected!' : 'Multiple session errors detected'} Clearing sessions and reconnecting...`);
         sessionErrorCount = 0;
+        hasSetOnlineStatus = false; // Reset online status when clearing sessions
         
         try {
             const fs = await import('fs');
             const path = await import('path');
             
-            // Clear only session files, keep creds
+            // Clear session files more aggressively, keep only essential creds
             const authPath = path.join(process.cwd(), 'auth');
             if (fs.existsSync(authPath)) {
                 const files = fs.readdirSync(authPath);
+                let clearedCount = 0;
+                
                 files.forEach(file => {
-                    if (file.includes('session-') || file.includes('sender-key-') || file.includes('app-state-')) {
+                    // Clear all session-related files more aggressively
+                    if (file.includes('session-') || 
+                        file.includes('sender-key-') || 
+                        file.includes('app-state-') ||
+                        file.includes('pre-key-') ||
+                        (isBadMACError && file.includes('sender-key-memory'))) {
+                        
                         const filePath = path.join(authPath, file);
                         try {
                             fs.unlinkSync(filePath);
                             console.log(`🗑️ Cleared session file: ${file}`);
+                            clearedCount++;
                         } catch (err) {
                             console.log(`⚠️ Could not delete ${file}:`, err.message);
                         }
                     }
                 });
+                
+                console.log(`✅ Cleared ${clearedCount} session files`);
+                
+                // For Bad MAC errors, also clear any corrupted pre-key files
+                if (isBadMACError) {
+                    console.log('🔧 Bad MAC detected - performing deep session cleanup...');
+                    
+                    // List remaining files for debugging
+                    const remainingFiles = fs.readdirSync(authPath);
+                    console.log('📋 Remaining auth files:', remainingFiles.filter(f => !f.includes('creds.json')));
+                }
             }
             
             // Cleanup current connection before restart
             cleanupConnection();
             
-            // Restart connection
+            // Restart connection with longer delay for Bad MAC errors
+            const restartDelay = isBadMACError ? 5000 : 3000;
             setTimeout(() => {
-                console.log('🔄 Restarting bot with cleared sessions...');
+                console.log(`🔄 Restarting bot with cleared sessions... (${errorType})`);
                 startBot();
-            }, 3000); // Reduced delay for faster recovery
+            }, restartDelay);
             
         } catch (error) {
             console.error('❌ Error clearing sessions:', error.message);
+            // Force restart even if cleanup fails
+            setTimeout(() => {
+                console.log('🔄 Force restarting due to cleanup error...');
+                startBot();
+            }, 5000);
         }
     } else {
         // For fewer errors, just cleanup and restart without clearing files
@@ -149,6 +264,87 @@ function cleanupConnection() {
         }
     }
 }
+
+// Function to handle graceful shutdown with offline notification
+async function gracefulShutdown(signal) {
+    console.log(`\n🛑 Received ${signal}, shutting down gracefully...`);
+    
+    if (currentSocket && hasSetOnlineStatus) {
+        try {
+            console.log('📤 Sending offline notification...');
+            await sendStatusNotification('offline', currentSocket);
+            
+            // Wait a moment for the message to be sent
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        } catch (error) {
+            console.error('❌ Error sending offline notification:', error.message);
+        }
+    }
+    
+    isConnecting = false;
+    hasSetOnlineStatus = false;
+    cleanupConnection();
+    
+    console.log('✅ Graceful shutdown completed');
+    process.exit(0);
+}
+
+// Global console overrides for session error detection
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+
+console.log = function(...args) {
+    const message = args.join(' ');
+    if (message.includes('Decrypted message with closed session') ||
+        message.includes('Bad MAC') ||
+        message.includes('Failed to decrypt message with any known session') ||
+        message.includes('Closing stale open session') ||
+        message.includes('SessionEntry')) {
+        originalConsoleLog.apply(console, args);
+        if (message.includes('Closing stale open session') || message.includes('SessionEntry')) {
+            originalConsoleLog('🔧 Detected stale session cleanup, monitoring for stability...');
+            // If we see too many stale session closures, force a cleanup
+            if (!global.staleSessionCount) {
+                global.staleSessionCount = 0;
+                global.staleSessionStartTime = Date.now();
+            }
+            global.staleSessionCount++;
+            
+            // If more than 5 stale sessions in 30 seconds, force cleanup
+            if (global.staleSessionCount > 5 && (Date.now() - global.staleSessionStartTime) < 30000) {
+                originalConsoleLog('🔧 Too many stale sessions detected, forcing cleanup...');
+                global.staleSessionCount = 0;
+                handleSessionError('excessive_stale_sessions');
+            }
+            
+            // Reset counter every 60 seconds
+            if ((Date.now() - global.staleSessionStartTime) > 60000) {
+                global.staleSessionCount = 0;
+                global.staleSessionStartTime = Date.now();
+            }
+        } else {
+            originalConsoleLog('🔧 Detected session decryption error in console, handling...');
+            const errorType = message.includes('Bad MAC') ? 'bad_mac' : 'decrypt_console_error';
+            handleSessionError(errorType);
+        }
+        return;
+    }
+    originalConsoleLog.apply(console, args);
+};
+
+console.error = function(...args) {
+    const message = args.join(' ');
+    if (message.includes('Bad MAC') ||
+        message.includes('Failed to decrypt message') ||
+        message.includes('verifyMAC') ||
+        message.includes('Session error:Error: Bad MAC')) {
+        originalConsoleError.apply(console, args);
+        originalConsoleLog('🔧 Detected Bad MAC error in console.error, handling...');
+        handleSessionError('bad_mac_console_error');
+        return;
+    }
+    originalConsoleError.apply(console, args);
+};
 
 async function startBot() {
     // Prevent multiple simultaneous connection attempts
@@ -198,13 +394,16 @@ async function startBot() {
             retryRequestDelayMs: 250,
             maxMsgRetryCount: 3,
             fireInitQueries: true,
-            emitOwnEvents: false // Don't emit events for own messages
+            emitOwnEvents: false, // Don't emit events for own messages
+            // Add session management options
+            cachedGroupMetadata: async (jid) => null, // Don't cache group metadata
+            patchMessageBeforeSending: (message) => message, // Don't modify messages
+            shouldSyncHistoryMessage: () => false, // Disable history sync
+            transactionOpts: { maxCommitRetries: 10, delayBetweenTriesMs: 3000 }
         });
 
         // Store the current socket reference
         currentSocket = sock;
-
-        currentSocket = sock; // Track the current socket instance
 
         sock.ev.on('creds.update', saveCreds);
 
@@ -217,6 +416,7 @@ async function startBot() {
 
                 if (connection === 'close') {
                     isConnecting = false;
+                    hasSetOnlineStatus = false; // Reset online status flag
 
                     const shouldReconnect = lastDisconnect.error?.output?.statusCode !== Baileys.DisconnectReason.loggedOut;
                     const errorMessage = lastDisconnect.error?.message || 'Unknown error';
@@ -272,6 +472,14 @@ async function startBot() {
                     reconnectAttempts = 0; // Reset on successful connection
                     sessionErrorCount = 0; // Reset session error count
                     console.log('✅ Connected to WhatsApp!');
+                    
+                    // Send online notification if not already sent
+                    if (!hasSetOnlineStatus) {
+                        hasSetOnlineStatus = true;
+                        setTimeout(() => {
+                            sendStatusNotification('online', sock);
+                        }, 2000); // Wait 2 seconds to ensure connection is stable
+                    }
                 } else if (connection === 'connecting') {
                     console.log('🔗 Connecting to WhatsApp...');
                 }
@@ -311,23 +519,52 @@ async function startBot() {
                 const errorMessage = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
                 if (errorMessage.includes('Decrypted message with closed session') || 
                     errorMessage.includes('Bad MAC') ||
-                    errorMessage.includes('decrypt')) {
+                    errorMessage.includes('decrypt') ||
+                    errorMessage.includes('Failed to decrypt message')) {
                     console.log('🔧 Session error detected in message content, handling...');
-                    handleSessionError();
+                    const errorType = errorMessage.includes('Bad MAC') ? 'bad_mac' : 'decrypt_error';
+                    handleSessionError(errorType);
                     return;
                 }
 
-                // Handle session errors - if message is corrupted, skip it
+                // Handle session errors - if message is corrupted, skip it but monitor frequency
                 if (msg.messageStubType || msg.message?.protocolMessage) {
                     console.log('⚠️ Skipping protocol/stub message (likely session error)');
+                    
+                    // If we're getting too many protocol messages, it might indicate session issues
+                    const now = Date.now();
+                    if (!global.protocolMessageCount) {
+                        global.protocolMessageCount = 0;
+                        global.protocolMessageStartTime = now;
+                    }
+                    
+                    global.protocolMessageCount++;
+                    
+                    // If we get more than 5 protocol messages in 30 seconds, handle as session error (reduced threshold)
+                    if (global.protocolMessageCount > 5 && (now - global.protocolMessageStartTime) < 30000) {
+                        console.log('🔧 Too many protocol messages detected, handling as session error...');
+                        global.protocolMessageCount = 0; // Reset counter
+                        handleSessionError('excessive_protocol_messages');
+                        return;
+                    }
+                    
+                    // Reset counter every 60 seconds
+                    if ((now - global.protocolMessageStartTime) > 60000) {
+                        global.protocolMessageCount = 0;
+                        global.protocolMessageStartTime = now;
+                    }
+                    
                     return;
                 }
 
                 // Check for session decryption errors in message content
                 const messageText = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-                if (messageText.includes('Decrypted message with closed session')) {
+                if (messageText.includes('Decrypted message with closed session') ||
+                    messageText.includes('Bad MAC') ||
+                    messageText.includes('Failed to decrypt message')) {
                     console.log('🔧 Detected session decryption error in message, handling...');
-                    handleSessionError();
+                    const errorType = messageText.includes('Bad MAC') ? 'bad_mac' : 'decrypt_error';
+                    handleSessionError(errorType);
                     return;
                 }
 
@@ -381,12 +618,43 @@ async function startBot() {
                     text = text.toLowerCase().trim();
                     if (!text) return;
 
+                    // Check session stability before processing commands
+                    const isSessionStable = () => {
+                        const now = Date.now();
+                        const protocolCount = global.protocolMessageCount || 0;
+                        const staleCount = global.staleSessionCount || 0;
+                        const protocolTime = global.protocolMessageStartTime || now;
+                        const staleTime = global.staleSessionStartTime || now;
+                        
+                        // Consider session unstable if recent issues
+                        if ((protocolCount > 2 && (now - protocolTime) < 30000) ||
+                            (staleCount > 2 && (now - staleTime) < 30000)) {
+                            return false;
+                        }
+                        return true;
+                    };
+
                     // Get sender info for groups
                     const senderName = msg.pushName || 'Unknown';
                     const actualSender = isGroup ? msg.key.participant : sender;
 
                     console.log(`📩 Message from ${senderName} in ${isGroup ? 'group' : 'private'} (${sender}): ${text}`);
                     console.log(`🔍 Debug - isGroup: ${isGroup}, isPrivate: ${isPrivate}, command: ${text}`);
+
+                    // Check session stability for command processing
+                    if (!isSessionStable() && text.startsWith('!')) {
+                        console.log('⚠️ Session unstable, deferring command processing...');
+                        const warningText = isGroup
+                            ? `@${actualSender.split('@')[0]} ⚠️ Bot is stabilizing, please try your command again in a moment.`
+                            : '⚠️ Bot is stabilizing, please try your command again in a moment.';
+                        
+                        const warningOptions = isGroup
+                            ? { text: warningText, mentions: [actualSender] }
+                            : { text: warningText };
+                            
+                        await sock.sendMessage(sender, warningOptions);
+                        return;
+                    }
 
                     // Bot commands that work in both private and group chats
                     // Regex pattern to match greetings like "hi", "hello", "hi i'm pasindu", etc.
@@ -416,6 +684,7 @@ async function startBot() {
                             `• *!sticker* - Create sticker from image\n` +
                             `• *!help* or *!commands* - Show this help menu\n` +
                             `• *!about* - Bot info, features & developer details\n` +
+                            `• *!status* - Check bot status and uptime\n` +
                             `${!isGroup ? `• *!reset* - Fix session errors (private only)\n` : ''}` +
                             `\n📱 *Sticker Creation:*\n` +
                             `1. Send image with "!sticker" caption\n` +
@@ -455,6 +724,40 @@ async function startBot() {
                         await sock.sendMessage(sender, { text: aboutMessage });
                         console.log('✅ About message sent successfully');
                     }
+                    else if (text === '!status') {
+                        console.log(`📊 Status command from ${senderName}`);
+                        
+                        const uptime = process.uptime();
+                        const hours = Math.floor(uptime / 3600);
+                        const minutes = Math.floor((uptime % 3600) / 60);
+                        const seconds = Math.floor(uptime % 60);
+                        
+                        const timestamp = new Date().toLocaleString('en-US', {
+                            timeZone: 'Asia/Colombo',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: true
+                        });
+
+                        const statusMessage = `🤖 *DEV~BOT Status Report*\n\n` +
+                            `🟢 *Status:* Online & Active\n` +
+                            `⏰ *Uptime:* ${hours}h ${minutes}m ${seconds}s\n` +
+                            `🕐 *Current Time:* ${timestamp}\n` +
+                            `📊 *Session Errors:* ${sessionErrorCount}/${maxSessionErrors}\n` +
+                            `🔄 *Reconnect Attempts:* ${reconnectAttempts}/${maxReconnectAttempts}\n` +
+                            `📱 *Connection:* ${currentSocket ? 'Stable' : 'Unstable'}\n` +
+                            `💾 *Memory Usage:* ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB\n\n` +
+                            `✅ *All systems operational!*\n` +
+                            `🔧 *Version:* 1.0.0 Enhanced\n` +
+                            `👨‍💻 *Developer:* Pasindu Madhuwantha`;
+
+                        await sock.sendMessage(sender, { text: statusMessage });
+                        console.log('✅ Status message sent successfully');
+                    }
                     else if (text === '!reset') {
                         if (isPrivate) {
                             console.log(`🔧 Manual session reset requested by ${senderName} in private chat`);
@@ -475,7 +778,7 @@ async function startBot() {
                         }
                     }
                     // Handle invalid commands (starts with ! but not a valid command)
-                    else if (text.startsWith('!') && text !== '!sticker' && text !== '!about' && text !== '!help' && text !== '!commands' && text !== '!reset') {
+                    else if (text.startsWith('!') && text !== '!sticker' && text !== '!about' && text !== '!help' && text !== '!commands' && text !== '!reset' && text !== '!status') {
                         const senderName = msg.pushName || 'Unknown';
                         const actualSender = isGroup ? msg.key.participant : sender;
                         
@@ -584,6 +887,71 @@ async function startBot() {
                             console.log('✅ Fallback bad words warning sent');
                         }
                     }
+                    // Enhanced regex pattern for developer info queries
+                    // Matches: "who is pasindu", "who is madhuwantha", "who is og", "who is pasinduog",
+                    // "tell me about pasindu", "about pasindu madhuwantha", "what about og", etc.
+                    const developerInfoPattern = /(?:who\s+is|tell\s+me\s+about|about|what\s+about)\s+(?:pasindu(?:\s+madhuwantha)?|madhuwantha|og|pasinduog|the\s+developer|creator|owner|dev)/i;
+                    
+                    if (developerInfoPattern.test(text)) {
+                        const senderName = msg.pushName || 'Unknown';
+                        const actualSender = isGroup ? msg.key.participant : sender;
+                        
+                        console.log(`👨‍💻 Developer info requested by ${senderName}`);
+                        
+                        const developerInfo = `👨‍💻 *About Pasindu Madhuwantha (PasinduOG)*\n\n` +
+                            `🌟 *Professional Background:*\n` +
+                            `• Passionate Backend Developer & Technology Enthusiast\n` +
+                            `• Remote Worker with expertise in modern web technologies\n` +
+                            `• Self-taught programmer continuously learning new technologies\n` +
+                            `• Specializes in Microservices and Backend Architecture\n\n` +
+                            
+                            `💻 *Technical Skills:*\n` +
+                            `• Languages: JavaScript, Node.js, Python, HTML, CSS\n` +
+                            `• Backend Development & API Design\n` +
+                            `• Database Management (MySQL)\n` +
+                            `• Modern Web Technologies & Frameworks\n` +
+                            `• Microservices Architecture\n\n` +
+                            
+                            `🚀 *Notable Projects:*\n` +
+                            `• DEV~BOT - Advanced WhatsApp Sticker & Command Bot\n` +
+                            `• YouTube Downloader - Web app for video/audio downloads\n` +
+                            `• Express API Projects - Various REST APIs with validation\n` +
+                            `• Facebook Video Downloader - Social media content tool\n\n` +
+                            
+                            `📊 *GitHub Activity:*\n` +
+                            `• 425+ contributions in the last year\n` +
+                            `• 18 public repositories\n` +
+                            `• Active in open-source development\n` +
+                            `• Achievements: Quickdraw, YOLO, Pull Shark\n\n` +
+                            
+                            `🌐 *Connect & Contact:*\n` +
+                            `• GitHub: @PasinduOG\n` +
+                            `• Email: pasinduogdev@gmail.com\n` +
+                            `• Location: Kalutara, Sri Lanka\n` +
+                            `• Social Media: Facebook, YouTube, Discord\n\n` +
+                            
+                            `⚡ *Fun Facts:*\n` +
+                            `• Quote: "I hate frontends" (Backend developer at heart!)\n` +
+                            `• Always exploring cutting-edge technologies\n` +
+                            `• Believes in continuous learning and innovation\n` +
+                            `• Member of @KreedXDevClub\n\n` +
+                            
+                            `💡 *Philosophy:*\n` +
+                            `"Interest for Backend Programming with a deep passion for exploring and researching cutting-edge technologies"\n\n` +
+                            
+                            `🔗 *Support:*\n` +
+                            `• Buy Me a Coffee: buymeacoffee.com/pasinduogdev\n` +
+                            `• Open to collaborations and new opportunities!\n\n` +
+                            
+                            `*Built with ❤️ by Pasindu Madhuwantha*`;
+                        
+                        const messageOptions = isGroup 
+                            ? { text: developerInfo, mentions: [actualSender] }
+                            : { text: developerInfo };
+                            
+                        await sock.sendMessage(sender, messageOptions);
+                        console.log('✅ Developer info sent successfully');
+                    }
                 }
 
                 // Handle image messages with sticker command - moved outside to avoid duplication
@@ -618,7 +986,26 @@ async function startBot() {
                             while (attempts < maxAttempts) {
                                 try {
                                     console.log(`📥 Downloading image (attempt ${attempts + 1}/${maxAttempts})...`);
-                                    imageBuffer = await Baileys.downloadMediaMessage(msg, 'buffer', {});
+                                    
+                                    // Add timeout to prevent hanging downloads
+                                    const downloadPromise = Baileys.downloadMediaMessage(msg, 'buffer', {});
+                                    const timeoutPromise = new Promise((_, reject) => 
+                                        setTimeout(() => reject(new Error('Download timeout')), 30000)
+                                    );
+                                    
+                                    imageBuffer = await Promise.race([downloadPromise, timeoutPromise]);
+                                    
+                                    // Validate downloaded buffer
+                                    if (!imageBuffer || imageBuffer.length === 0) {
+                                        throw new Error('Downloaded buffer is empty');
+                                    }
+                                    
+                                    // Check if buffer contains valid image data
+                                    if (imageBuffer.length < 1000) {
+                                        throw new Error('Image buffer too small, likely corrupted');
+                                    }
+                                    
+                                    console.log(`✅ Image downloaded successfully, size: ${imageBuffer.length} bytes`);
                                     break;
                                 } catch (downloadError) {
                                     attempts++;
@@ -627,7 +1014,7 @@ async function startBot() {
                                         throw new Error('Failed to download image after multiple attempts');
                                     }
                                     // Wait before retry
-                                    await new Promise(resolve => setTimeout(resolve, 1000));
+                                    await new Promise(resolve => setTimeout(resolve, 2000));
                                 }
                             }
 
@@ -804,9 +1191,11 @@ async function startBot() {
                 // Handle specific session errors
                 if (error.message.includes('Decrypted message with closed session') ||
                     error.message.includes('Bad MAC') ||
-                    error.message.includes('decrypt')) {
+                    error.message.includes('decrypt') ||
+                    error.message.includes('Failed to decrypt message')) {
                     console.log('🔧 Session decrypt error in message processing, handling...');
-                    handleSessionError();
+                    const errorType = error.message.includes('Bad MAC') ? 'bad_mac' : 'decrypt_error';
+                    handleSessionError(errorType);
                     return; // Don't try to send error message with broken session
                 }
 
@@ -821,9 +1210,13 @@ async function startBot() {
                 } catch (sendError) {
                     console.error('❌ Failed to send error message:', sendError.message);
                     // If we can't send error message, it might be a session issue
-                    if (sendError.message.includes('session') || sendError.message.includes('decrypt')) {
+                    if (sendError.message.includes('session') || 
+                        sendError.message.includes('decrypt') ||
+                        sendError.message.includes('Bad MAC') ||
+                        sendError.message.includes('Failed to decrypt message')) {
                         console.log('🔧 Session error while sending error message, handling...');
-                        handleSessionError();
+                        const errorType = sendError.message.includes('Bad MAC') ? 'bad_mac' : 'session_error';
+                        handleSessionError(errorType);
                     }
                 }
             }
@@ -833,13 +1226,15 @@ async function startBot() {
         sock.ev.on('error', (error) => {
             console.error('❌ Socket error:', error.message);
             
-            // Handle session-related errors
+            // Handle session-related errors with specific typing
             if (error.message.includes('Bad MAC') || 
                 error.message.includes('decrypt') || 
                 error.message.includes('session') ||
-                error.message.includes('Decrypted message with closed session')) {
+                error.message.includes('Decrypted message with closed session') ||
+                error.message.includes('Failed to decrypt message')) {
                 console.log('🔧 Detected session error, handling...');
-                handleSessionError();
+                const errorType = error.message.includes('Bad MAC') ? 'bad_mac' : 'session_error';
+                handleSessionError(errorType);
             }
         });
 
@@ -847,32 +1242,23 @@ async function startBot() {
         sock.ev.on('CB:message,type:text', (node) => {
             if (node && node.attrs && node.attrs.type === 'error') {
                 console.log('⚠️ Message error node received:', JSON.stringify(node, null, 2));
-                if (node.content && node.content.toString().includes('decrypt')) {
+                if (node.content && (node.content.toString().includes('decrypt') || 
+                    node.content.toString().includes('Bad MAC'))) {
                     console.log('🔧 Decrypt error detected, handling session error...');
-                    handleSessionError();
+                    const errorType = node.content.toString().includes('Bad MAC') ? 'bad_mac' : 'decrypt_error';
+                    handleSessionError(errorType);
                 }
             }
         });
 
-        // Add special handler for decryption errors
-        const originalConsoleLog = console.log;
-        console.log = function(...args) {
-            const message = args.join(' ');
-            if (message.includes('Decrypted message with closed session')) {
-                originalConsoleLog.apply(console, args);
-                console.log('🔧 Detected session decryption error in console, handling...');
-                handleSessionError();
-                return;
-            }
-            originalConsoleLog.apply(console, args);
-        };
-
         // Handle session errors specifically
         sock.ev.on('CB:iq,type:error', (node) => {
             console.log('⚠️ IQ Error received:', JSON.stringify(node, null, 2));
-            if (node && node.content && node.content.toString().includes('session')) {
+            if (node && node.content && (node.content.toString().includes('session') ||
+                node.content.toString().includes('Bad MAC'))) {
                 console.log('🔧 Session IQ error detected, handling...');
-                handleSessionError();
+                const errorType = node.content.toString().includes('Bad MAC') ? 'bad_mac' : 'iq_session_error';
+                handleSessionError(errorType);
             }
         });
 
@@ -905,31 +1291,54 @@ async function startBot() {
 }
 
 // Global error handlers
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', async (error) => {
     console.error('💥 Uncaught Exception:', error.message);
+    
+    // Handle Bad MAC errors specifically
+    if (error.message.includes('Bad MAC') || 
+        error.message.includes('Failed to decrypt message') ||
+        error.message.includes('verifyMAC')) {
+        console.log('🔧 Bad MAC uncaught exception detected - forcing session cleanup...');
+        // Force immediate session cleanup for Bad MAC errors
+        sessionErrorCount = maxSessionErrors;
+        handleSessionError('bad_mac_uncaught');
+        return;
+    }
+    
+    // Send offline notification before crashing
+    if (currentSocket && hasSetOnlineStatus) {
+        try {
+            await sendStatusNotification('offline', currentSocket);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (notifError) {
+            console.error('❌ Error sending crash offline notification:', notifError.message);
+        }
+    }
+    
     isConnecting = false; // Reset connection state
-    console.log('🔄 Restarting bot in 10 seconds...');
+    hasSetOnlineStatus = false;
+    console.log('🔄 Restarting bot in 5 seconds...');
     setTimeout(() => {
-        process.exit(1);
-    }, 10000);
+        main(); // Restart the bot instead of exiting
+    }, 5000);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+    
+    // Handle Bad MAC errors in promise rejections
+    if (reason && reason.message && (reason.message.includes('Bad MAC') || 
+        reason.message.includes('Failed to decrypt message') ||
+        reason.message.includes('verifyMAC'))) {
+        console.log('🔧 Bad MAC unhandled rejection detected - forcing session cleanup...');
+        sessionErrorCount = maxSessionErrors;
+        handleSessionError('bad_mac_rejection');
+    }
 });
 
 // Handle graceful shutdown
-process.on('SIGINT', () => {
-    console.log('\n🛑 Received SIGINT, shutting down gracefully...');
-    isConnecting = false;
-    process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-    console.log('\n🛑 Received SIGTERM, shutting down gracefully...');
-    isConnecting = false;
-    process.exit(0);
-});
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // Start the bot with error recovery
 async function main() {

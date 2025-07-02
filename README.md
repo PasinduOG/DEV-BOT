@@ -14,12 +14,15 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 - **🤖 Flexible Greeting Detection** - Uses regex patterns to detect greetings in natural conversation
 - **🎥 Video Response System** - Sends video responses for invalid commands and inappropriate content
 - **🛡️ Smart Content Filtering** - Focused bad word detection with minimal false positives
+- **📊 Status Monitoring** - Real-time bot status and uptime tracking
+- **🔔 Online/Offline Notifications** - Automatic status notifications when bot starts/stops
 
 ### Commands
 - **`hi` / `hello`** - Get a personalized greeting (supports flexible patterns like "Hi I'm John", "Hello there", etc.)
 - **`!sticker`** - Create stickers from images (silent command - no help text response)
 - **`!help` / `!commands`** - Display available commands and usage instructions
 - **`!about`** - Get detailed information about bot features, terms & conditions, and developer details
+- **`!status`** - Check bot status, uptime, and system information
 - **`!reset`** - Fix session errors and connectivity issues (private chat only)
 
 **💡 Pro Tip**: You can test private chat commands by messaging your own number. The bot intelligently distinguishes between user commands and bot responses to prevent infinite loops.
@@ -34,7 +37,16 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 1. **Direct Upload**: Send an image with `!sticker` as the caption
 2. **Reply Method**: Reply to any image message with `!sticker`
 3. **Silent Operation**: The `!sticker` command produces no response text - only functional when used with images
-4. **Supported Formats**: JPG, PNG, GIF, WebP, and other common image formats
+4. **Session Stability Check**: Bot warns users if session is unstable and defers sticker creation
+5. **Error Recovery**: Comprehensive error handling with detailed user feedback
+
+### Smart Sticker Creation Features
+- **Enhanced Image Validation**: Validates image buffer size and metadata
+- **Download Timeout Protection**: 30-second timeout for image downloads
+- **Comprehensive Error Handling**: Detailed error messages for invalid/corrupted images
+- **Format Support**: JPG, PNG, GIF, WebP, and other common image formats
+- **Size Optimization**: Automatic resizing to 512x512 for optimal WhatsApp compatibility
+- **Session-Aware Processing**: Defers processing during session instability
 
 ## 🛠️ Installation
 
@@ -61,11 +73,19 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
    npm start
    ```
 
-4. **Ensure media files are present**
+4. **Available NPM Scripts**
+   ```bash
+   npm start              # Start the bot normally
+   npm run clear-sessions # Basic session cleanup
+   npm run fix-sessions   # Quick session fix and restart
+   npm run fix-bad-mac    # Aggressive cleanup for Bad MAC errors
+   ```
+
+5. **Ensure media files are present**
    - Verify `src/hey.mp4` exists for video responses
    - This file is used for invalid commands and content filtering responses
 
-5. **Authenticate with WhatsApp**
+6. **Authenticate with WhatsApp**
    - Scan the QR code displayed in terminal with your WhatsApp mobile app
    - Go to WhatsApp → Settings → Linked Devices → Link a Device
    - Scan the QR code to authenticate
@@ -82,22 +102,52 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 
 ## 🔧 Configuration
 
+### Online/Offline Notifications
+To receive automatic status notifications when the bot starts or stops:
+
+1. **Edit `index.js`** and find this line:
+   ```javascript
+   const NOTIFICATION_JID = '94760135744@s.whatsapp.net';
+   ```
+
+2. **Replace with your WhatsApp number** in the format: `countrycode+number@s.whatsapp.net`
+   ```javascript
+   // Examples:
+   const NOTIFICATION_JID = '1234567890@s.whatsapp.net';     // US number: +1 234 567 890
+   const NOTIFICATION_JID = '94771234567@s.whatsapp.net';    // Sri Lanka: +94 77 123 4567
+   const NOTIFICATION_JID = '919876543210@s.whatsapp.net';   // India: +91 98765 43210
+   ```
+
+3. **To disable notifications**, set it to `null`:
+   ```javascript
+   const NOTIFICATION_JID = null;
+   ```
+
 ### Environment Variables
 The bot works out of the box with default settings. For advanced configuration, you can modify the following in `index.js`:
 
 ```javascript
-// Connection settings
+// Session Management & Error Recovery
 const maxReconnectAttempts = 5;        // Max reconnection attempts
 const baseReconnectDelay = 5000;       // Base delay between reconnects (ms)
-const maxSessionErrors = 10;           // Clear sessions after this many errors
+const maxSessionErrors = 10;           // Trigger cleanup after this many errors
+const maxProtocolErrors = 10;          // Max protocol/stub message errors
+const maxStaleClosures = 5;            // Max stale session closures
 
-// Sticker settings
+// Sticker Creation Settings
 const stickerSize = 512;               // Sticker dimensions (512x512)
 const stickerQuality = 80;             // WebP quality (0-100)
+const downloadTimeout = 30000;         // Image download timeout (30 seconds)
 
-// Content filtering settings
-const badWordsPatterns = [...];        // Ultra-simplified array of exact word patterns only
+// Content Filtering Settings
+const badWordsPatterns = [...];        // Ultra-simplified array of exact word patterns
 const videoResponsePath = 'src/hey.mp4'; // Video file for responses
+
+// Session Stability Settings
+let protocolErrorCount = 0;            // Tracks protocol/stub errors
+let staleSessionCount = 0;             // Tracks stale session closures
+let sessionErrorCount = 0;             // Tracks general session errors
+let lastErrorTime = 0;                 // Tracks error timing patterns
 ```
 
 ### Browser Configuration
@@ -110,15 +160,20 @@ The bot identifies itself as:
 
 ```
 DEV-BOT/
-├── index.js              # Main bot logic and event handlers
-├── clear-sessions.js     # Utility script for manual session cleanup
-├── package.json          # Project dependencies and scripts
-├── README.md            # This documentation
+├── index.js              # Main bot logic with advanced session management
+├── clear-sessions.js     # Basic session cleanup utility
+├── fix-sessions.js       # Quick session fix script (NEW)
+├── fix-bad-mac.js        # Aggressive cleanup for Bad MAC errors (NEW)
+├── package.json          # Project dependencies and session management scripts
+├── README.md            # Comprehensive documentation
 ├── src/                 # Media files
 │   └── hey.mp4          # Video file for responses (invalid commands & content filtering)
-└── auth/               # WhatsApp authentication data (auto-generated)
+└── auth/               # WhatsApp authentication data (auto-managed)
     ├── creds.json      # Authentication credentials
-    └── session-*.json  # Session files (auto-managed)
+    ├── session-*.json  # Session files (auto-cleaned when corrupted)
+    ├── pre-key-*.json  # Pre-shared keys (auto-managed)
+    ├── sender-key-*.json # Sender encryption keys (auto-managed)
+    └── app-state-*.json # Application state sync files (auto-managed)
 ```
 
 ## 🎯 Usage Examples
@@ -149,6 +204,19 @@ Bot: 🤖 DEV~BOT - About
      GitHub: @PasinduOG
      ...
 
+User: !status
+Bot: 🤖 DEV~BOT Status Report
+     🟢 Status: Online & Active
+     ⏰ Uptime: 2h 15m 30s
+     📊 Session Errors: 0/10
+     📡 Protocol Errors: 0/10
+     🔄 Stale Sessions: 0/5
+     ✅ All systems operational!
+
+User: [during session instability]
+Bot: ⚠️ Session is currently unstable. Command processing is temporarily deferred.
+     Please wait for the session to stabilize, or try the !reset command.
+
 User: !invalidcommand
 Bot: [Sends hey.mp4 video] + "❌ Invalid command! Use !help to see available commands."
 
@@ -156,7 +224,32 @@ User: [inappropriate content]
 Bot: [Sends hey.mp4 video] + "⚠️ Please maintain respectful language in our chat."
 ```
 
-### Sticker Creation
+### Automatic Status Notifications
+The bot automatically sends status messages when configured:
+
+```
+When Bot Starts:
+🟢 DEV~BOT is Now Online
+
+✅ Status: Connected to WhatsApp
+🕐 Time: 07/02/2025, 10:30:45 AM
+🤖 System: All features operational
+🔧 Session: Fresh and ready
+
+Ready to serve! Send commands to interact.
+
+When Bot Stops:
+🔴 DEV~BOT is Now Offline
+
+⏹️ Status: Disconnected from WhatsApp
+🕐 Time: 07/02/2025, 02:15:20 PM
+🛑 System: Bot stopped
+💤 Mode: Standby
+
+Bot will be back soon! Wait for reconnection.
+```
+
+### Sticker Creation Examples
 ```
 User: !sticker
 Bot: [No response - silent command]
@@ -168,6 +261,15 @@ Bot: [Sends converted WebP sticker]
 Method 2: Reply to any image with "!sticker"
 Bot: 🎨 Creating sticker from replied image... Please wait!
 Bot: [Sends converted WebP sticker]
+
+Method 3: During session instability
+Bot: ⚠️ Session is currently unstable. Sticker creation is temporarily deferred.
+     Please wait for the session to stabilize, or try the !reset command.
+
+Error Handling Examples:
+Bot: ❌ Failed to download image. Please try again with a valid image.
+Bot: ❌ Invalid image format or corrupted file. Please send a valid JPG, PNG, or GIF.
+Bot: ❌ Image processing failed. The file might be too large or corrupted.
 ```
 
 ### Group Chat Features
@@ -175,30 +277,63 @@ Bot: [Sends converted WebP sticker]
 - **Group-Aware Help**: Different help messages for groups vs private chats
 - **Admin Commands**: Some commands restricted to private chats for security
 
-## 🔄 Session Management
+## 🔄 Advanced Session Management
 
-### Automatic Error Recovery
-The bot includes sophisticated session management:
+### Intelligent Error Recovery System
+The bot features a sophisticated session management system with aggressive error detection and automatic recovery:
 
-- **Session Error Tracking**: Monitors "Bad MAC" and decryption errors
-- **Automatic Cleanup**: Clears corrupted sessions after 10 errors
-- **Smart Reconnection**: Exponential backoff for connection attempts
-- **Conflict Resolution**: Handles multiple WhatsApp Web sessions gracefully
+#### Real-Time Session Monitoring
+- **Protocol/Stub Message Detection**: Tracks "Skipping protocol/stub message" errors
+- **Stale Session Monitoring**: Detects "Closing stale open session" warnings
+- **Session Corruption Detection**: Monitors "Bad MAC" and decryption failures
+- **Automatic Error Counting**: Global counters track session instability patterns
 
-### Manual Session Reset
-If you encounter persistent session issues:
+#### Aggressive Auto-Recovery
+- **Stability Thresholds**: 
+  - **10+ protocol/stub errors** in short timeframe → triggers cleanup
+  - **5+ stale session closures** in short timeframe → triggers cleanup
+  - **10+ general session errors** → triggers cleanup
+- **Forced Session Cleanup**: Automatically removes corrupted files when thresholds are exceeded
+- **Smart Restart Logic**: Restarts bot connection after cleanup
+- **Console Override Monitoring**: Intercepts console output to detect session errors in real-time
 
+#### Session Stability Checks
+- **Command Deferral**: Bot warns users and defers command processing during session instability
+- **Stability Validation**: Checks session health before processing any commands
+- **User Notifications**: Informs users when the session is unstable and commands are temporarily unavailable
+
+### Available Session Management Scripts
+
+#### Quick Session Fix
+```bash
+# Quick session cleanup and restart (recommended)
+npm run fix-sessions
+```
+
+#### Emergency Bad MAC Cleanup
+```bash
+# Aggressive cleanup for persistent "Bad MAC" errors
+npm run fix-bad-mac
+```
+
+#### Manual Session Reset Options
 ```bash
 # Option 1: Use the bot command (private chat only)
 !reset
 
-# Option 2: Run the cleanup script
+# Option 2: Basic session cleanup
+npm run clear-sessions
+# or
 node clear-sessions.js
 
-# Option 3: Manual cleanup
+# Option 3: Full manual cleanup
 rm -rf auth/session-*
 rm -rf auth/sender-key-*
 rm -rf auth/app-state-*
+rm -rf auth/pre-key-*
+
+# Option 4: Nuclear option (complete re-authentication required)
+rm -rf auth/
 ```
 
 ## 🚨 Troubleshooting
@@ -229,30 +364,65 @@ Error: Stream Errored (conflict)
 - Verify WhatsApp connection status
 - Try `!reset` to clear sessions
 
-**5. Private Chat Commands Not Working**
+**5. Bad MAC Errors & Session Corruption**
+```
+Error: Bad MAC
+Failed to decrypt message with any known session
+Session error:Error: Bad MAC at Object.verifyMAC
+Skipping protocol/stub message
+Closing stale open session
+```
+- **Emergency Fix**: Use `npm run fix-bad-mac` for immediate aggressive cleanup
+- **Quick Fix**: Use `npm run fix-sessions` for standard session recovery
+- **Bot Command**: Use `!reset` command in private chat
+- **Manual Fix**: `node clear-sessions.js` then restart
+- **Nuclear Option**: Delete entire `auth` folder and re-authenticate
+
+**6. Session Instability Warnings**
+```
+⚠️ Session is currently unstable. Command processing is temporarily deferred.
+Please wait for the session to stabilize, or try the !reset command.
+```
+- **Automatic Recovery**: Bot monitors and attempts auto-recovery
+- **User Action**: Wait for stability or use `!reset` command
+- **Manual Intervention**: Use `npm run fix-sessions` if automatic recovery fails
+
+**7. Protocol/Stub Message Errors**
+```
+Skipping protocol/stub message: too many errors
+```
+- **Automatic Handling**: Bot counts these errors and triggers cleanup at threshold
+- **User Action**: No immediate action needed - bot handles automatically
+- **Manual Override**: Use `npm run fix-sessions` if issues persist
+
+**8. Private Chat Commands Not Working**
 - Ensure you're messaging the bot directly (not in a group)
 - Check that the bot shows as "online" or "last seen recently"
 - Verify the phone number used to authenticate the bot
 - Try restarting the bot with `npm start`
 - Check console logs for debugging information
 
-**6. Video Responses Not Working**
+**9. Video Responses Not Working**
 - Ensure `src/hey.mp4` file exists in the project directory
 - Check video file permissions and size
 - Verify Sharp installation for video processing
 - Monitor console logs for video sending errors
 
-### Error Codes
+### Error Codes & Recovery Solutions
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Bad MAC Error` | Session corruption | Use `!reset` or restart bot |
-| `Stream Errored (conflict)` | Multiple sessions | Close other WhatsApp Web tabs |
-| `Connection timeout` | Network issues | Check internet connection |
-| `Failed to decrypt message` | Session mismatch | Clear auth data and re-authenticate |
-| `Video sending failed` | Media file issues | Check `src/hey.mp4` exists and permissions |
-| `Content filtering error` | Pattern matching issues | Check console logs for details |
-| `Commands not working in private` | Authentication/connection issues | Restart bot, check phone number, verify connection |
+| Error | Cause | Automatic Recovery | Manual Solution |
+|-------|-------|-------------------|-----------------|
+| `Bad MAC Error` | Cryptographic session corruption | ✅ Auto-cleanup at threshold | `npm run fix-bad-mac` or `!reset` |
+| `Failed to decrypt message` | Session key mismatch | ✅ Auto-cleanup at threshold | `npm run fix-bad-mac` |
+| `verifyMAC error` | Authentication failure | ✅ Auto-cleanup at threshold | Clear all session files and restart |
+| `Skipping protocol/stub message` | Session communication errors | ✅ Auto-counted and handled | Automatic at 10+ errors |
+| `Closing stale open session` | Session lifecycle issues | ✅ Auto-counted and handled | Automatic at 5+ closures |
+| `Stream Errored (conflict)` | Multiple sessions | ❌ Manual intervention | Close other WhatsApp Web tabs |
+| `Connection timeout` | Network issues | ✅ Auto-reconnect with backoff | Check internet connection |
+| `Video sending failed` | Media file issues | ❌ Manual intervention | Check `src/hey.mp4` exists |
+| `Content filtering error` | Pattern matching issues | ❌ Manual intervention | Check console logs |
+| `Session unstable` | Multiple error conditions | ✅ Auto-deferral and recovery | Use `npm run fix-sessions` |
+| `Commands deferred` | Session instability | ✅ Auto-recovery in progress | Wait or use `!reset` command |
 
 ## 🔒 Security Features
 
@@ -288,6 +458,35 @@ The bot includes an ultra-simplified content filtering system designed to mainta
 3. **Warning Message**: Adds appropriate warning text
 4. **Graceful Fallback**: Falls back to text-only warning if video fails
 5. **Console Logging**: Logs detection events for monitoring
+
+## 🔍 Advanced Session Monitoring
+
+### Real-Time Session Health Tracking
+The bot continuously monitors session health through multiple mechanisms:
+
+#### Console Output Analysis
+- **Error Pattern Detection**: Monitors console output for session-related errors
+- **Real-Time Counting**: Tracks error frequencies and patterns
+- **Automated Response**: Triggers cleanup when error thresholds are exceeded
+
+#### Session Stability Indicators
+- **Protocol Error Counter**: Tracks "Skipping protocol/stub message" occurrences
+- **Stale Session Counter**: Monitors "Closing stale open session" events
+- **General Error Counter**: Tracks all session-related errors
+- **Stability State**: Determines if session is stable enough for command processing
+
+#### Intelligent Recovery Actions
+- **Threshold-Based Cleanup**: Automatically triggers session cleanup at configured limits
+- **User Communication**: Warns users during session instability
+- **Command Deferral**: Temporarily postpones command processing during recovery
+- **Automatic Restart**: Restarts bot connection after successful cleanup
+
+#### Session Health Reporting
+The `!status` command now provides comprehensive session health information:
+- Current error counts for all monitored categories
+- Session stability status
+- Uptime and operational status
+- System health indicators
 
 ## 🌟 Advanced Features
 

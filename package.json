@@ -4,11 +4,15 @@
     "main": "index.js",
     "type": "module",
     "scripts": {
-        "start": "node index.js"
+        "start": "node index.js",
+        "fix-bad-mac": "node fix-bad-mac.js",
+        "clear-sessions": "node clear-sessions.js",
+        "fix-sessions": "node fix-sessions.js"
     },
     "dependencies": {
         "@hapi/boom": "^10.0.1",
         "@whiskeysockets/baileys": "^6.7.18",
+        "dotenv": "^17.0.1",
         "pino": "^8.17.2",
         "qrcode-terminal": "^0.12.0",
         "sharp": "^0.32.6"
