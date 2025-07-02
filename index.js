@@ -696,33 +696,88 @@ async function startBot() {
                     }
                     else if (text === '!about') {
                         console.log(`ℹ️ About command from ${senderName}`);
-                        const aboutMessage = `🤖 *MASTER-CHIEF - About*\n\n` +
-                            `*✨ Features:*\n` +
-                            `• 🎨 Advanced sticker creation from any image\n` +
-                            `• 🤖 Smart greeting detection with flexible patterns\n` +
-                            `• 🛡️ Intelligent content filtering system\n` +
-                            `• 🎥 Video responses for invalid commands\n` +
-                            `• 👥 Full group chat support with mentions\n` +
-                            `• 🔄 Advanced session management & auto-recovery\n` +
-                            `• 📱 Cross-platform compatibility\n\n` +
-                            `*⚖️ Terms & Conditions:*\n` +
-                            `• For educational and personal use only\n` +
-                            `• Respect WhatsApp's Terms of Service\n` +
-                            `• Use appropriate language in conversations\n` +
-                            `• No spam or misuse of bot features\n` +
-                            `• Developer not responsible for misuse\n\n` +
-                            `*👨‍💻 Developer:*\n` +
-                            `• Name: Pasindu Madhuwantha (Pasindu OG)\n` +
-                            `• GitHub: @PasinduOG\n` +
-                            `• Project: Open Source WhatsApp Bot\n` +
-                            `• Built with: Node.js + Baileys + Sharp\n\n` +
-                            `*🔗 Links:*\n` +
-                            `• GitHub: github.com/PasinduOG\n` +
-                            `• Repository: github.com/PasinduOG/DEV-BOT\n\n` +
-                            `*Made with ❤️ for the community!*`;
+                        
+                        try {
+                            // Import fs for reading the image file
+                            const fs = await import('fs');
+                            const path = await import('path');
                             
-                        await sock.sendMessage(sender, { text: aboutMessage });
-                        console.log('✅ About message sent successfully');
+                            // Read the about image file
+                            const imagePath = path.join(process.cwd(), 'src', 'chief3.jpg');
+                            
+                            if (!fs.existsSync(imagePath)) {
+                                throw new Error('About image file not found');
+                            }
+                            
+                            const imageBuffer = fs.readFileSync(imagePath);
+                            
+                            const aboutMessage = `🤖 *MASTER-CHIEF - About*\n\n` +
+                                `*✨ Features:*\n` +
+                                `• 🎨 Advanced sticker creation from any image\n` +
+                                `• 🤖 Smart greeting detection with flexible patterns\n` +
+                                `• 🛡️ Intelligent content filtering system\n` +
+                                `• 🎥 Image responses for invalid commands\n` +
+                                `• 👥 Full group chat support with mentions\n` +
+                                `• 🔄 Advanced session management & auto-recovery\n` +
+                                `• 📱 Cross-platform compatibility\n\n` +
+                                `*⚖️ Terms & Conditions:*\n` +
+                                `• For educational and personal use only\n` +
+                                `• Respect WhatsApp's Terms of Service\n` +
+                                `• Use appropriate language in conversations\n` +
+                                `• No spam or misuse of bot features\n` +
+                                `• Developer not responsible for misuse\n\n` +
+                                `*👨‍💻 Developer:*\n` +
+                                `• Name: Pasindu Madhuwantha (Pasindu OG)\n` +
+                                `• GitHub: @PasinduOG\n` +
+                                `• Project: Open Source WhatsApp Bot\n` +
+                                `• Built with: Node.js + Baileys + Sharp\n\n` +
+                                `*🔗 Links:*\n` +
+                                `• GitHub: github.com/PasinduOG\n` +
+                                `• Repository: github.com/PasinduOG/DEV-BOT\n\n` +
+                                `*Made with ❤️ for the community!*`;
+                            
+                            // Send the image with about message as caption
+                            const aboutOptions = {
+                                image: imageBuffer,
+                                caption: aboutMessage,
+                                mimetype: 'image/jpeg'
+                            };
+                            
+                            await sock.sendMessage(sender, aboutOptions);
+                            console.log('✅ About message with image sent successfully');
+                            
+                        } catch (imageError) {
+                            console.error('❌ Error sending about image:', imageError.message);
+                            
+                            // Fallback to text-only message if image fails
+                            const aboutMessage = `🤖 *MASTER-CHIEF - About*\n\n` +
+                                `*✨ Features:*\n` +
+                                `• 🎨 Advanced sticker creation from any image\n` +
+                                `• 🤖 Smart greeting detection with flexible patterns\n` +
+                                `• 🛡️ Intelligent content filtering system\n` +
+                                `• 🎥 Image responses for invalid commands\n` +
+                                `• 👥 Full group chat support with mentions\n` +
+                                `• 🔄 Advanced session management & auto-recovery\n` +
+                                `• 📱 Cross-platform compatibility\n\n` +
+                                `*⚖️ Terms & Conditions:*\n` +
+                                `• For educational and personal use only\n` +
+                                `• Respect WhatsApp's Terms of Service\n` +
+                                `• Use appropriate language in conversations\n` +
+                                `• No spam or misuse of bot features\n` +
+                                `• Developer not responsible for misuse\n\n` +
+                                `*👨‍💻 Developer:*\n` +
+                                `• Name: Pasindu Madhuwantha (Pasindu OG)\n` +
+                                `• GitHub: @PasinduOG\n` +
+                                `• Project: Open Source WhatsApp Bot\n` +
+                                `• Built with: Node.js + Baileys + Sharp\n\n` +
+                                `*🔗 Links:*\n` +
+                                `• GitHub: github.com/PasinduOG\n` +
+                                `• Repository: github.com/PasinduOG/DEV-BOT\n\n` +
+                                `*Made with ❤️ for the community!*`;
+                                
+                            await sock.sendMessage(sender, { text: aboutMessage });
+                            console.log('✅ Fallback about message sent successfully');
+                        }
                     }
                     else if (text === '!status') {
                         console.log(`📊 Status command from ${senderName}`);
@@ -789,40 +844,40 @@ async function startBot() {
                             const fs = await import('fs');
                             const path = await import('path');
                             
-                            // Read the video file
-                            const videoPath = path.join(process.cwd(), 'src', 'hey.mp4');
+                            // Read the image file
+                            const imagePath = path.join(process.cwd(), 'src', 'chief.jpg');
                             
-                            if (!fs.existsSync(videoPath)) {
-                                throw new Error('Video file not found');
+                            if (!fs.existsSync(imagePath)) {
+                                throw new Error('Image file not found');
                             }
                             
-                            const videoBuffer = fs.readFileSync(videoPath);
+                            const imageBuffer = fs.readFileSync(imagePath);
                             
-                            // Send the video with a caption
-                            const videoCaption = isGroup 
-                                ? `කෙලෝ ගන්න එපා මට කියාලා හොදේ! @${actualSender.split('@')[0]}! \n\n*කුණුහර්ප තහනම් හොදින් මතක තියාගන්න ඕන!*.........😒 Try *!help* or *!commands* to see available commands!`
-                                : `කෙලෝ ගන්න එපා මට කියාලා හොදේ! \n\n*කුණුහර්ප තහනම් හොදින් මතක තියාගන්න ඕන!*..........😒 Try *!help* or *!commands* to see available commands!`;
+                            // Send the image with a caption
+                            const imageCaption = isGroup 
+                                ? `Attention 🛑! @${actualSender.split('@')[0]}! \n\n*This Message from Master Chief!*......... Try *!help* or *!commands* to see available commands!`
+                                : `Attention 🛑! \n\n*This Message from Master Chief!*.......... Try *!help* or *!commands* to see available commands!`;
                                 
-                            const videoOptions = {
-                                video: videoBuffer,
-                                caption: videoCaption,
-                                mimetype: 'video/mp4'
+                            const imageOptions = {
+                                image: imageBuffer,
+                                caption: imageCaption,
+                                mimetype: 'image/jpeg'
                             };
                             
                             if (isGroup) {
-                                videoOptions.mentions = [actualSender];
+                                imageOptions.mentions = [actualSender];
                             }
                             
-                            await sock.sendMessage(sender, videoOptions);
-                            console.log('✅ Invalid command video response sent successfully');
+                            await sock.sendMessage(sender, imageOptions);
+                            console.log('✅ Invalid command image response sent successfully');
                             
-                        } catch (videoError) {
-                            console.error('❌ Error sending video for invalid command:', videoError.message);
+                        } catch (imageError) {
+                            console.error('❌ Error sending image for invalid command:', imageError.message);
                             
-                            // Fallback to text message if video fails
+                            // Fallback to text message if image fails
                             const fallbackText = isGroup
-                                ? `@${actualSender.split('@')[0]} *කුණුහර්ප තහනම් හොදින් මතක තියාගන්න ඕන!*.........😒 \n\nTry *!help* or *!commands* to see available commands.`
-                                : `*කුණුහර්ප තහනම් හොදින් මතක තියාගන්න ඕන!*.........😒 \n\nTry *!help* or *!commands* to see available commands.`;
+                                ? `@${actualSender.split('@')[0]} *This Message from Master Chief!*......... \n\nTry *!help* or *!commands* to see available commands.`
+                                : `*This Message from Master Chief!*......... \n\nTry *!help* or *!commands* to see available commands.`;
                                 
                             const fallbackOptions = isGroup
                                 ? { text: fallbackText, mentions: [actualSender] }
@@ -844,40 +899,40 @@ async function startBot() {
                             const fs = await import('fs');
                             const path = await import('path');
                             
-                            // Read the video file
-                            const videoPath = path.join(process.cwd(), 'src', 'hey.mp4');
+                            // Read the image file
+                            const imagePath = path.join(process.cwd(), 'src', 'chief2.jpg');
                             
-                            if (!fs.existsSync(videoPath)) {
-                                throw new Error('Video file not found');
+                            if (!fs.existsSync(imagePath)) {
+                                throw new Error('Image file not found');
                             }
                             
-                            const videoBuffer = fs.readFileSync(videoPath);
+                            const imageBuffer = fs.readFileSync(imagePath);
                             
-                            // Send the video with a caption about language
-                            const videoCaption = isGroup 
-                                ? `කෙලෝ ගන්න එපා මට කියාලා හොදේ! @${actualSender.split('@')[0]}! \n\n*කුණුහර්ප තහනම් හොදින් මතක තියාගන්න ඕන!*.........😒\n\nPlease use appropriate language! Let's keep our conversation respectful. 🙏`
-                                : `කෙලෝ ගන්න එපා මට කියාලා හොදේ! \n\n*කුණුහර්ප තහනම් හොදින් මතක තියාගන්න ඕන!*.........😒\n\nPlease use appropriate language! Let's keep our conversation respectful. 🙏`;
+                            // Send the image with a caption about language
+                            const imageCaption = isGroup 
+                                ? `Warning ⚠️! @${actualSender.split('@')[0]}! \n\n*This Message from Master Chief!*.........\n\nPlease use appropriate language! Let's keep our conversation respectful. 🙏`
+                                : `Warning ⚠️! \n\n*This Message from Master Chief!*.........\n\nPlease use appropriate language! Let's keep our conversation respectful. 🙏`;
                                 
-                            const videoOptions = {
-                                video: videoBuffer,
-                                caption: videoCaption,
-                                mimetype: 'video/mp4'
+                            const imageOptions = {
+                                image: imageBuffer,
+                                caption: imageCaption,
+                                mimetype: 'image/jpeg'
                             };
                             
                             if (isGroup) {
-                                videoOptions.mentions = [actualSender];
+                                imageOptions.mentions = [actualSender];
                             }
                             
-                            await sock.sendMessage(sender, videoOptions);
-                            console.log('✅ Bad words warning video sent successfully');
+                            await sock.sendMessage(sender, imageOptions);
+                            console.log('✅ Bad words warning image sent successfully');
                             
-                        } catch (videoError) {
-                            console.error('❌ Error sending video for bad words:', videoError.message);
+                        } catch (imageError) {
+                            console.error('❌ Error sending image for bad words:', imageError.message);
                             
-                            // Fallback to text message if video fails
+                            // Fallback to text message if image fails
                             const fallbackText = isGroup
-                                ? `@${actualSender.split('@')[0]} *මීට වැඩිය හොදායි*.........😒\n\nPlease use appropriate language! Let's keep our conversation respectful. 🙏`
-                                : `*මීට වැඩිය හොදායි*.........😒\n\nPlease use appropriate language! Let's keep our conversation respectful. 🙏`;
+                                ? `@${actualSender.split('@')[0]} *This Message from Master Chief!*.........\n\nPlease use appropriate language! Let's keep our conversation respectful. 🙏`
+                                : `*This Message from Master Chief!*.........\n\nPlease use appropriate language! Let's keep our conversation respectful. 🙏`;
                                 
                             const fallbackOptions = isGroup
                                 ? { text: fallbackText, mentions: [actualSender] }

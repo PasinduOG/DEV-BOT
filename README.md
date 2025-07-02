@@ -21,7 +21,7 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 - **`hi` / `hello`** - Get a personalized greeting (supports flexible patterns like "Hi I'm John", "Hello there", etc.)
 - **`!sticker`** - Create stickers from images (silent command - no help text response)
 - **`!help` / `!commands`** - Display available commands and usage instructions
-- **`!about`** - Get detailed information about bot features, terms & conditions, and developer details
+- **`!about`** - Get detailed information about bot features, terms & conditions, and developer details (includes image)
 - **`!status`** - Check bot status, uptime, and system information
 - **`!reset`** - Fix session errors and connectivity issues (private chat only)
 
@@ -30,7 +30,7 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 ### Smart Response System
 - **Invalid Command Detection** - Automatically detects and responds to invalid commands (messages starting with `!` that aren't recognized)
 - **Content Filtering** - Detects inappropriate language and responds with warnings
-- **Video Responses** - Uses `src/hey.mp4` for both invalid commands and content filtering responses
+- **Image Responses** - Uses `src/chief.jpg` for both invalid commands and content filtering responses
 - **Fallback Messaging** - Text responses when video sending fails
 
 ### Sticker Creation Methods
@@ -82,7 +82,7 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
    ```
 
 5. **Ensure media files are present**
-   - Verify `src/hey.mp4` exists for video responses
+   - Verify `src/chief.jpg` exists for image responses
    - This file is used for invalid commands and content filtering responses
 
 6. **Authenticate with WhatsApp**
@@ -141,7 +141,7 @@ const downloadTimeout = 30000;         // Image download timeout (30 seconds)
 
 // Content Filtering Settings
 const badWordsPatterns = [...];        // Ultra-simplified array of exact word patterns
-const videoResponsePath = 'src/hey.mp4'; // Video file for responses
+const imageResponsePath = 'src/chief.jpg'; // Image file for responses
 
 // Session Stability Settings
 let protocolErrorCount = 0;            // Tracks protocol/stub errors
@@ -167,7 +167,10 @@ DEV-BOT/
 ├── package.json          # Project dependencies and session management scripts
 ├── README.md            # Comprehensive documentation
 ├── src/                 # Media files
-│   └── hey.mp4          # Video file for responses (invalid commands & content filtering)
+│   ├── chief.jpg        # Image file for responses (invalid commands & content filtering)
+│   ├── chief2.jpg       # Image file for bad words warning responses
+│   ├── chief3.jpg       # Image file for !about command
+│   └── hey.mp4          # Previous video file (kept for reference)
 └── auth/               # WhatsApp authentication data (auto-managed)
     ├── creds.json      # Authentication credentials
     ├── session-*.json  # Session files (auto-cleaned when corrupted)
@@ -198,7 +201,7 @@ Bot: 🤖 Bot Commands:
      ...
 
 User: !about
-Bot: 🤖 MASTER-CHIEF - About
+Bot: [Sends chief3.jpg image] + 🤖 MASTER-CHIEF - About
      ✨ Features: Advanced sticker creation, smart content filtering...
      👨‍💻 Developer: Pasindu Madhuwantha (Pasindu OG)
      GitHub: @PasinduOG
@@ -218,10 +221,10 @@ Bot: ⚠️ Session is currently unstable. Command processing is temporarily def
      Please wait for the session to stabilize, or try the !reset command.
 
 User: !invalidcommand
-Bot: [Sends hey.mp4 video] + "❌ Invalid command! Use !help to see available commands."
+Bot: [Sends chief.jpg image] + "❌ Invalid command! Use !help to see available commands."
 
 User: [inappropriate content]
-Bot: [Sends hey.mp4 video] + "⚠️ Please maintain respectful language in our chat."
+Bot: [Sends chief.jpg image] + "⚠️ Please maintain respectful language in our chat."
 ```
 
 ### Automatic Status Notifications
@@ -403,7 +406,7 @@ Skipping protocol/stub message: too many errors
 - Check console logs for debugging information
 
 **9. Video Responses Not Working**
-- Ensure `src/hey.mp4` file exists in the project directory
+- Ensure `src/chief.jpg` file exists in the project directory
 - Check video file permissions and size
 - Verify Sharp installation for video processing
 - Monitor console logs for video sending errors
@@ -419,7 +422,7 @@ Skipping protocol/stub message: too many errors
 | `Closing stale open session` | Session lifecycle issues | ✅ Auto-counted and handled | Automatic at 5+ closures |
 | `Stream Errored (conflict)` | Multiple sessions | ❌ Manual intervention | Close other WhatsApp Web tabs |
 | `Connection timeout` | Network issues | ✅ Auto-reconnect with backoff | Check internet connection |
-| `Video sending failed` | Media file issues | ❌ Manual intervention | Check `src/hey.mp4` exists |
+| `Image sending failed` | Media file issues | ❌ Manual intervention | Check `src/chief.jpg` exists |
 | `Content filtering error` | Pattern matching issues | ❌ Manual intervention | Check console logs |
 | `Session unstable` | Multiple error conditions | ✅ Auto-deferral and recovery | Use `npm run fix-sessions` |
 | `Commands deferred` | Session instability | ✅ Auto-recovery in progress | Wait or use `!reset` command |
@@ -442,7 +445,7 @@ The bot includes an ultra-simplified content filtering system designed to mainta
 - **Ultra-Focused Detection**: Only detects the most explicit and clearly offensive terms
 - **Exact Word Matching**: Uses precise word boundaries to prevent false positives
 - **Multi-Language Support**: Detects inappropriate content in both English and Sinhala
-- **Video Response**: Responds with `src/hey.mp4` video plus warning message
+- **Image Response**: Responds with `src/chief.jpg` image plus warning message
 - **Minimal False Positives**: Extremely conservative approach to avoid flagging normal conversation
 
 ### Filtering Features
@@ -454,7 +457,7 @@ The bot includes an ultra-simplified content filtering system designed to mainta
 
 ### Response Behavior
 1. **Detection**: When inappropriate content is detected
-2. **Video Response**: Sends `hey.mp4` video file
+2. **Image Response**: Sends `chief.jpg` image file
 3. **Warning Message**: Adds appropriate warning text
 4. **Graceful Fallback**: Falls back to text-only warning if video fails
 5. **Console Logging**: Logs detection events for monitoring
