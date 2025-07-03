@@ -1,6 +1,12 @@
 # MASTER-CHIEF - Advanced Sticker & Command Bot
 
-A robust WhatsApp bot built with Baileys that provides interactive features including sticker creation, command responses, and group chat support with advanced session management and error recovery.
+A powerful W### Advanced FFmpeg Processing**: Uses ffmpeg-static and fluent-ffmpeg for reliable video to animated WebP conversion
+- **Multi-tier Fallback System**: 
+  - Three different FFmpeg methods cascade if previous ones fail
+  - Video normalization for problematic sources
+  - GIF intermediate conversion for maximum compatibility
+- **Format Correction**: Automatically attempts to normalize corrupted or problematic video files
+- **Temporary File Management**: Creates and cleans up temporary processing files automaticallyp bot built with Baileys that provides interactive features including static and animated sticker creation, command responses, and group chat support with advanced session management and error recovery.
 
 ## 🚀 Features
 
@@ -8,18 +14,20 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 - **🔐 QR Code Authentication** - Secure WhatsApp Web authentication via QR code
 - **💬 Smart Message Handling** - Responds to commands in both private and group chats with intelligent pattern matching
 - **🎨 Advanced Sticker Creation** - Convert images to WebP stickers with automatic resizing
+- **🎬 Animated Sticker Creation** - Convert videos and GIFs to animated WebP stickers with multi-tier fallback processing
 - **👥 Group Chat Support** - Full functionality in WhatsApp groups with user mentions
 - **🔄 Session Management** - Automatic session error handling and recovery
 - **📱 Cross-Platform** - Works on Windows, macOS, and Linux
 - **🤖 Flexible Greeting Detection** - Uses regex patterns to detect greetings in natural conversation
-- **🎥 Video Response System** - Sends video responses for invalid commands and inappropriate content
+- **🖼️ Image Response System** - Sends image responses for invalid commands and inappropriate content
 - **🛡️ Smart Content Filtering** - Focused bad word detection with minimal false positives
 - **📊 Status Monitoring** - Real-time bot status and uptime tracking
 - **🔔 Online/Offline Notifications** - Automatic status notifications when bot starts/stops
 
 ### Commands
 - **`hi` / `hello`** - Get a personalized greeting (supports flexible patterns like "Hi I'm John", "Hello there", etc.)
-- **`!sticker`** - Create stickers from images (silent command - no help text response)
+- **`!sticker`** - Create static stickers from images (send image with caption or reply to image)
+- **`!asticker`** - Create animated stickers from videos or GIFs (send video/GIF with caption or reply to video/GIF)
 - **`!help` / `!commands`** - Display available commands and usage instructions
 - **`!about`** - Get detailed information about bot features, terms & conditions, and developer details (includes image)
 - **`!status`** - Check bot status, uptime, and system information
@@ -30,23 +38,46 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 ### Smart Response System
 - **Invalid Command Detection** - Automatically detects and responds to invalid commands (messages starting with `!` that aren't recognized)
 - **Content Filtering** - Detects inappropriate language and responds with warnings
-- **Image Responses** - Uses `src/chief.jpg` for both invalid commands and content filtering responses
-- **Fallback Messaging** - Text responses when video sending fails
+- **Image Responses** - Uses `src/chief.jpg` for invalid commands and `src/chief2.jpg` for content filtering responses
+- **Fallback Messaging** - Text responses when image sending fails
 
 ### Sticker Creation Methods
-1. **Direct Upload**: Send an image with `!sticker` as the caption
-2. **Reply Method**: Reply to any image message with `!sticker`
-3. **Silent Operation**: The `!sticker` command produces no response text - only functional when used with images
-4. **Session Stability Check**: Bot warns users if session is unstable and defers sticker creation
-5. **Error Recovery**: Comprehensive error handling with detailed user feedback
+1. **Static Stickers**:
+   - **Direct Upload**: Send an image with `!sticker` as the caption
+   - **Reply Method**: Reply to any image message with `!sticker`
+
+2. **Animated Stickers**:
+   - **Direct Upload**: Send a video or GIF with `!asticker` as the caption
+   - **Reply Method**: Reply to any video or GIF message with `!asticker`
+   - **Format Support**: MP4, 3GP, MKV, WebM, GIF, and most common video formats
+   - **Resolution Requirement**: Source video should be at least 512x512 pixels (smaller videos may cause scaling issues)
+   - **FFmpeg Processing**: Uses advanced scaling and padding filters with transparent background
+   - **Multi-tier Conversion**: Uses three different FFmpeg methods with automatic fallback if any method fails
+   - **Automatic Format Conversion**: Handles problematic or corrupted video files through normalization
+   - **Error Handling**: Provides helpful error messages and fallback suggestions when conversion fails
+
+3. **Advanced Features**:
+   - **Silent Operation**: The sticker commands produce no response text - only functional when used with media
+   - **Session Stability Check**: Bot warns users if session is unstable and defers sticker creation
+   - **Error Recovery**: Comprehensive error handling with detailed user feedback
+   - **Multiple Conversion Methods**: Cascading fallback methods ensure sticker creation even with difficult formats
+   - **FFmpeg Compatibility Testing**: Includes test-ffmpeg.js script to check system compatibility
 
 ### Smart Sticker Creation Features
-- **Enhanced Image Validation**: Validates image buffer size and metadata
-- **Download Timeout Protection**: 30-second timeout for image downloads
-- **Comprehensive Error Handling**: Detailed error messages for invalid/corrupted images
-- **Format Support**: JPG, PNG, GIF, WebP, and other common image formats
+- **Enhanced Media Validation**: Validates media buffer size and metadata to prevent processing invalid files
+- **Download Timeout Protection**: 30-second timeout for media downloads to prevent hanging
+- **Comprehensive Error Handling**: Detailed error messages for invalid/corrupted media with helpful suggestions
+- **Format Support**: 
+  - **Static**: JPG, PNG, GIF, WebP, and other common image formats
+  - **Animated**: MP4, 3GP, WebM, GIF, MKV and most common video formats
 - **Size Optimization**: Automatic resizing to 512x512 for optimal WhatsApp compatibility
-- **Session-Aware Processing**: Defers processing during session instability
+- **Advanced FFmpeg Processing**: Uses ffmpeg-static and fluent-ffmpeg for reliable video to animated WebP conversion
+- **Multi-tier Fallback System**: 
+  - Three different FFmpeg methods cascade if previous ones fail
+  - Video normalization for problematic sources
+  - GIF intermediate conversion for maximum compatibility
+- **Format Correction**: Automatically attempts to normalize corrupted or problematic video files
+- **Session-Aware Processing**: Defers processing during session instability to prevent errors
 
 ## 🛠️ Installation
 
@@ -54,6 +85,7 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 - **Node.js** (v16 or higher)
 - **npm** or **yarn**
 - **WhatsApp Account** (for authentication)
+- **FFmpeg** (automatically installed via ffmpeg-static dependency)
 
 ### Quick Setup
 
@@ -82,8 +114,12 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
    ```
 
 5. **Ensure media files are present**
-   - Verify `src/chief.jpg` exists for image responses
-   - This file is used for invalid commands and content filtering responses
+   - Make sure the `src` directory exists
+   - Required image files:
+     - `src/chief.jpg` - Used for invalid command responses
+     - `src/chief2.jpg` - Used for content filtering responses
+     - `src/chief3.jpg` - Used for !about command responses
+   - Media file missing errors will fallback to text-only responses
 
 6. **Authenticate with WhatsApp**
    - Scan the QR code displayed in terminal with your WhatsApp mobile app
@@ -95,10 +131,13 @@ A robust WhatsApp bot built with Baileys that provides interactive features incl
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `@whiskeysockets/baileys` | ^6.7.18 | WhatsApp Web API implementation |
-| `sharp` | ^0.32.6 | High-performance image processing for stickers |
-| `qrcode-terminal` | ^0.12.0 | QR code display in terminal |
-| `pino` | ^8.17.2 | Fast JSON logger |
-| `@hapi/boom` | ^10.0.1 | HTTP error objects |
+| `sharp` | ^0.32.6 | High-performance image processing for static stickers |
+| `ffmpeg-static` | ^5.2.0 | Static FFmpeg binaries for animated stickers (cross-platform) |
+| `fluent-ffmpeg` | ^2.1.3 | Node.js interface for FFmpeg with simplified API |
+| `qrcode-terminal` | ^0.12.0 | QR code display in terminal for authentication |
+| `pino` | ^8.17.2 | Fast JSON logger for performance monitoring |
+| `@hapi/boom` | ^10.0.1 | HTTP error objects for proper error handling |
+| `dotenv` | ^17.0.1 | Environment variable management for configuration |
 
 ## 🔧 Configuration
 
@@ -162,21 +201,24 @@ The bot identifies itself as:
 MASTER-CHIEF/
 ├── index.js              # Main bot logic with advanced session management
 ├── clear-sessions.js     # Basic session cleanup utility
-├── fix-sessions.js       # Quick session fix script (NEW)
-├── fix-bad-mac.js        # Aggressive cleanup for Bad MAC errors (NEW)
+├── fix-sessions.js       # Quick session fix script 
+├── fix-bad-mac.js        # Aggressive cleanup for Bad MAC errors
 ├── package.json          # Project dependencies and session management scripts
-├── README.md            # Comprehensive documentation
-├── src/                 # Media files
-│   ├── chief.jpg        # Image file for responses (invalid commands & content filtering)
-│   ├── chief2.jpg       # Image file for bad words warning responses
-│   ├── chief3.jpg       # Image file for !about command
-│   └── hey.mp4          # Previous video file (kept for reference)
-└── auth/               # WhatsApp authentication data (auto-managed)
-    ├── creds.json      # Authentication credentials
-    ├── session-*.json  # Session files (auto-cleaned when corrupted)
-    ├── pre-key-*.json  # Pre-shared keys (auto-managed)
+├── IMAGE_RESPONSE_UPDATE.md # Documentation on image response system
+├── README.md             # Comprehensive documentation
+├── src/                  # Media files
+│   ├── chief.jpg         # Image file for invalid command responses
+│   ├── chief2.jpg        # Image file for bad words warning responses
+│   ├── chief3.jpg        # Image file for !about command
+│   └── hey.mp4           # Previous video file (kept for reference)
+├── temp/                 # Temporary directory for animated sticker processing (auto-created)
+│   └── *                 # Temporary video/WebP files (auto-cleaned)
+└── auth/                 # WhatsApp authentication data (auto-managed)
+    ├── creds.json        # Authentication credentials
+    ├── session-*.json    # Session files (auto-cleaned when corrupted)
+    ├── pre-key-*.json    # Pre-shared keys (auto-managed)
     ├── sender-key-*.json # Sender encryption keys (auto-managed)
-    └── app-state-*.json # Application state sync files (auto-managed)
+    └── app-state-*.json  # Application state sync files (auto-managed)
 ```
 
 ## 🎯 Usage Examples
@@ -253,6 +295,8 @@ Bot will be back soon! Wait for reconnection.
 ```
 
 ### Sticker Creation Examples
+
+#### Static Stickers
 ```
 User: !sticker
 Bot: [No response - silent command]
@@ -264,15 +308,38 @@ Bot: [Sends converted WebP sticker]
 Method 2: Reply to any image with "!sticker"
 Bot: 🎨 Creating sticker from replied image... Please wait!
 Bot: [Sends converted WebP sticker]
+```
 
-Method 3: During session instability
+#### Animated Stickers
+```
+Method 1: Send video/GIF with caption "!asticker"
+Bot: 🎬 Creating animated sticker... Please wait!
+Bot: [Sends animated WebP sticker]
+
+Method 2: Reply to video/GIF with "!asticker"
+Bot: 🎬 Creating animated sticker from replied video... Please wait!
+Bot: [Sends animated WebP sticker]
+```
+
+#### Error Handling Examples
+```
+Session Instability:
 Bot: ⚠️ Session is currently unstable. Sticker creation is temporarily deferred.
      Please wait for the session to stabilize, or try the !reset command.
 
-Error Handling Examples:
+Static Sticker Errors:
 Bot: ❌ Failed to download image. Please try again with a valid image.
 Bot: ❌ Invalid image format or corrupted file. Please send a valid JPG, PNG, or GIF.
 Bot: ❌ Image processing failed. The file might be too large or corrupted.
+
+Animated Sticker Errors:
+Bot: ❌ Failed to create animated sticker: FFmpeg conversion error.
+Bot: ❌ Failed to create animated sticker: Video format not supported.
+Bot: ❌ Failed to create animated sticker: Video buffer too small, likely corrupted.
+Bot: ❌ Failed to create animated sticker: FFmpeg binary not found. Please ensure ffmpeg-static is properly installed.
+Bot: ❌ Failed to create animated sticker: [Parsed_crop_1 @ 0000025d9acd8a00] Invalid too big or non positive size for width '512' or height '512'
+     (This occurs when the source video is too small - use a larger video with resolution of at least 512x512)
+Bot: ❌ Tip: Try sending the video directly with "!asticker" as caption instead.
 ```
 
 ### Group Chat Features
@@ -357,10 +424,72 @@ Error: Stream Errored (conflict)
 - Use `!reset` command or `node clear-sessions.js`
 - Restart the bot
 
-**3. Sticker Creation Fails**
+**3. Static Sticker Creation Fails**
 - Ensure image is valid (JPG, PNG, etc.)
 - Check image file size (< 10MB recommended)
 - Verify Sharp installation: `npm list sharp`
+
+**4. Animated Sticker Creation Issues**
+- **Video Requirements**:
+  - Recommended resolution: At least 512x512 pixels
+  - Maximum duration: 5 seconds (longer videos will be trimmed)
+  - Supported formats: MP4, WebM, GIF (others may work)
+  - File size: Less than 8MB recommended
+- **FFmpeg Compatibility**:
+  - Ensure FFmpeg is properly installed: `ffmpeg -version` in terminal
+  - The bot will automatically try multiple methods if one fails
+  - Multi-tier fallback system: libwebp_anim → webp → GIF intermediate → fluent-ffmpeg
+- **Testing FFmpeg Compatibility**:
+  - Run the included FFmpeg compatibility test script:
+    ```bash
+    npm run test-ffmpeg
+    ```
+  - This script will check which pad filter options work on your system
+  - It creates test files in the temp directory to verify compatibility
+  - Results help diagnose issues with animated sticker creation
+  - Run the test script: `npm run test-ffmpeg`
+- **Manually Creating Compatible Videos**:
+  - Pre-process your video to 512x512 before uploading
+  - With preserved aspect ratio: `ffmpeg -i input.mp4 -vf "scale='min(512,iw)':'min(512,ih)':force_original_aspect_ratio=decrease,fps=12" -q:v 50 -compression_level 6 output.webp`
+  - For square format (legacy): `ffmpeg -i input.mp4 -vf "scale=512:512:force_original_aspect_ratio=increase,crop=512:512,setsar=1,fps=12" -q:v 50 -compression_level 6 output.webp`
+
+**3a. Animated Sticker Creation Fails**
+- Ensure FFmpeg is properly installed: `npm list ffmpeg-static fluent-ffmpeg`
+- Try with shorter videos (< 10 seconds)
+- Check video format compatibility (MP4 works best)
+- For GIFs, ensure they're standard format
+
+**3b. Aspect Ratio Preservation for Animated Stickers**
+- The bot now preserves the original aspect ratio of videos when creating animated stickers
+- Videos are no longer forced into a square format with black padding
+- The maximum dimension is limited to 512px while maintaining the original proportions
+- To test different aspect ratios, run: `npm run test-aspect-ratio`
+- You can manually test other filter syntaxes with: `npm run test-ffmpeg`
+
+**3c. Stickers Are Too Large and Cannot Be Sent**
+- WhatsApp has a size limit of approximately 500KB for animated stickers
+- The latest version optimizes stickers with these settings:
+  - Reduced quality (`-q:v 50` instead of 80)
+  - Lower frame rate (12fps)
+  - Shorter duration (3 seconds max)
+  - Increased compression (`-compression_level 6`)
+- If stickers are still too large, you can further reduce quality in index.js (try `-q:v 40` or lower)
+- Try direct upload with caption instead of reply method
+- Check temp directory permissions in project folder
+
+**3b. FFmpeg Video Processing Errors**
+- **Error: "Invalid too big or non positive size for width '512' or height '512'"**:
+  - This occurs with very small videos (less than 512px)
+  - Solution: Try using a larger resolution video (at least 512x512)
+  - Alternative: Try a different video source with higher resolution
+  - Workaround: Direct upload method sometimes handles small videos better than reply method
+
+- **Error: "No option name near '0x00000000'" or "No option name near 'black@0'" or "No option name near 'black'" or "Error parsing a filter description"**:
+  - This occurs when your FFmpeg version doesn't support certain color format syntax in the padding filter
+  - Solution: The bot now omits the color parameter entirely for maximum compatibility
+  - Different FFmpeg versions have different requirements for color format: some support `color=0x00000000`, `color=black@0`, or `color=black`
+  - If you're still seeing this error, update the bot to the latest version
+  - Alternative: Try a different video or use the !reset command to clear any caches
 
 **4. Bot Not Responding**
 - Check console for error messages
@@ -424,6 +553,12 @@ Skipping protocol/stub message: too many errors
 | `Connection timeout` | Network issues | ✅ Auto-reconnect with backoff | Check internet connection |
 | `Image sending failed` | Media file issues | ❌ Manual intervention | Check `src/chief.jpg` exists |
 | `Content filtering error` | Pattern matching issues | ❌ Manual intervention | Check console logs |
+| `FFmpeg not found` | Missing FFmpeg dependency | ❌ Manual intervention | Reinstall dependencies: `npm install` |
+| `FFmpeg conversion error` | Video format issues | ✅ Auto-fallback methods | Try different video format or encoding |
+| `Video buffer too small` | Corrupted video file | ❌ Manual intervention | Try a different video source |
+| `Invalid too big or non positive size for width/height` | Low resolution video | ❌ Manual intervention | Use video with resolution ≥ 512x512 |
+| `No option name near '0x00000000'` or `'black@0'` or `'black'` | FFmpeg pad filter color format incompatibility | ✅ Auto-fixed in latest version | Now omitting color parameter entirely |
+| `Animated sticker creation failed` | Multiple potential causes | ✅ Multi-tier fallback system | Try direct upload with `!asticker` caption |
 | `Session unstable` | Multiple error conditions | ✅ Auto-deferral and recovery | Use `npm run fix-sessions` |
 | `Commands deferred` | Session instability | ✅ Auto-recovery in progress | Wait or use `!reset` command |
 

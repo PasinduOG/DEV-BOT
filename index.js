@@ -55,6 +55,448 @@ async function createSticker(imageBuffer) {
     }
 }
 
+// Function to create animated sticker from video or GIF buffer
+async function createAnimatedSticker(videoBuffer) {
+    try {
+        console.log('🔧 Processing video/GIF buffer, size:', videoBuffer.length, 'bytes');
+
+        // Validate buffer
+        if (!videoBuffer || videoBuffer.length === 0) {
+            throw new Error('Empty or invalid video buffer');
+        }
+
+        // Additional validation for minimum size
+        if (videoBuffer.length < 1000) {
+            throw new Error('Video buffer too small, likely corrupted');
+        }
+
+        // We need to save the buffer to a temporary file to process with ffmpeg
+        const fs = await import('fs');
+        const path = await import('path');
+        const { exec } = await import('child_process');
+        const util = await import('util');
+        const execPromise = util.promisify(exec);
+        
+        // Import ffmpeg-static
+        const ffmpegStatic = await import('ffmpeg-static');
+        const ffmpegPath = ffmpegStatic.default || ffmpegStatic;
+        
+        if (!ffmpegPath) {
+            throw new Error('FFmpeg binary not found. Please ensure ffmpeg-static is properly installed.');
+        }
+        
+        // For fluent-ffmpeg, let's use a more robust approach to handle the module
+        let ffmpeg;
+        let fluentFfmpegModule;
+        try {
+            // Try importing fluent-ffmpeg in multiple ways to handle CommonJS/ES modules inconsistencies
+            fluentFfmpegModule = await import('fluent-ffmpeg');
+            
+            // Check different ways the module might expose its API
+            if (typeof fluentFfmpegModule === 'function') {
+                ffmpeg = fluentFfmpegModule;
+            } else if (fluentFfmpegModule.default && typeof fluentFfmpegModule.default === 'function') {
+                ffmpeg = fluentFfmpegModule.default;
+            } else if (fluentFfmpegModule.__esModule && fluentFfmpegModule.default) {
+                ffmpeg = fluentFfmpegModule.default;
+            } else {
+                // Extract any function from the module
+                const possibleFfmpegFn = Object.values(fluentFfmpegModule).find(v => typeof v === 'function');
+                if (possibleFfmpegFn) {
+                    ffmpeg = possibleFfmpegFn;
+                }
+            }
+            
+            // If we got a valid ffmpeg function, try to set the path
+            if (ffmpeg && typeof ffmpeg === 'function') {
+                // In fluent-ffmpeg, setFfmpegPath is a static method on the module, not on instances
+                if (fluentFfmpegModule && typeof fluentFfmpegModule.setFfmpegPath === 'function') {
+                    fluentFfmpegModule.setFfmpegPath(ffmpegPath);
+                    console.log('🔧 Successfully configured fluent-ffmpeg with path:', ffmpegPath);
+                } else if (fluentFfmpegModule && fluentFfmpegModule.default && typeof fluentFfmpegModule.default.setFfmpegPath === 'function') {
+                    fluentFfmpegModule.default.setFfmpegPath(ffmpegPath);
+                    console.log('🔧 Successfully configured fluent-ffmpeg with path:', ffmpegPath);
+                } else {
+                    console.log('⚠️ fluent-ffmpeg.setFfmpegPath not available, will use ffmpegPath directly in commands');
+                }
+            } else {
+                console.log('⚠️ Could not initialize fluent-ffmpeg as a function');
+            }
+        } catch (ffmpegImportError) {
+            console.log('⚠️ Error importing fluent-ffmpeg:', ffmpegImportError.message);
+            ffmpeg = null;
+        }
+        
+        console.log('🔧 Using FFmpeg from path:', ffmpegPath);
+        
+        // Create temporary directory if it doesn't exist
+        const tempDir = path.join(process.cwd(), 'temp');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir);
+        }
+        
+        // Create temporary file paths
+        const tempInputPath = path.join(tempDir, `input-${Date.now()}.mp4`);
+        const tempOutputPath = path.join(tempDir, `output-${Date.now()}.webp`);
+        
+        // Write buffer to temporary file
+        fs.writeFileSync(tempInputPath, videoBuffer);
+        
+        console.log(`📁 Saved input video to temporary file: ${tempInputPath}`);
+        
+        // Check video format by running ffprobe
+        try {
+            console.log('🔍 Analyzing video format...');
+            const probeCommand = `"${ffmpegPath}" -i "${tempInputPath}" -v error`;
+            
+            try {
+                await execPromise(probeCommand);
+            } catch (probeError) {
+                // ffprobe often exits with code 1 but still provides useful info in stderr
+                console.log('📊 Video format info:', probeError.stderr);
+                
+                // Look for common issues in the probe output
+                const stderr = probeError.stderr || '';
+                if (stderr.includes('moov atom not found') || 
+                    stderr.includes('Invalid data found') ||
+                    stderr.includes('Error') || 
+                    stderr.includes('could not find codec')) {
+                    
+                    console.log('⚠️ Potential video format issue detected, attempting to normalize...');
+                    
+                    // Create a temporary normalized video
+                    const tempNormalizedPath = path.join(tempDir, `normalized-${Date.now()}.mp4`);
+                    const normalizeCommand = `"${ffmpegPath}" -y -i "${tempInputPath}" -c:v libx264 -pix_fmt yuv420p "${tempNormalizedPath}"`;
+                    
+                    try {
+                        await execPromise(normalizeCommand);
+                        console.log('✅ Video normalized successfully');
+                        
+                        // Replace the original input with normalized version
+                        fs.unlinkSync(tempInputPath);
+                        fs.renameSync(tempNormalizedPath, tempInputPath);
+                    } catch (normalizeError) {
+                        console.log('⚠️ Video normalization failed:', normalizeError.message);
+                        // Continue with original file, let the main ffmpeg command handle it
+                    }
+                }
+            }
+        } catch (error) {
+            console.log('⚠️ Video analysis failed:', error.message);
+            // Continue anyway and let the main conversion attempt proceed
+        }
+        
+        // Use ffmpeg to convert to animated WebP
+        // -vf scale='min(512,iw)':'min(512,ih)' ensures the largest dimension doesn't exceed 512px while preserving aspect ratio
+        // -vcodec libwebp_anim creates an animated WebP
+        // -lossless 0 for lossy compression (better for animations)
+        // -q:v 50 sets quality to 50 (0-100) for smaller file size
+        // -loop 0 for infinite looping
+        // -preset default for balanced encoding speed/quality
+        // -fps_mode vfr helps with frame timing
+        // -t 3 limits to maximum 3 seconds (WhatsApp limit for stickers)
+        // -compression_level 6 for better file size optimization
+        
+        // Try different approaches for creating animated WebP
+        // Approach 1: libwebp_anim (best quality but not available in all FFmpeg builds)
+        // Approach 2: webp (more compatible but sometimes less animation support)
+        // Approach 3: GIF intermediate (most compatible approach)
+        
+        // IMPORTANT FFmpeg COMPATIBILITY NOTES:
+        // 1. The scale filter preserves original aspect ratio and limits max dimension to 512px:
+        //    - 'min(512,iw)':'min(512,ih)' ensures video is scaled down only if needed
+        //    - force_original_aspect_ratio=decrease maintains proportions correctly
+        // 2. No padding or cropping is applied, preserving the original video's aspect ratio
+        // 3. Using fps=12 filter reduces file size and improves compatibility
+        // 4. Using -fps_mode vfr instead of deprecated -vsync 0 for better compatibility
+        
+        console.log('🎬 Attempting to create animated sticker (Method 1/3)...');
+        
+        // Use the ffmpeg binary from ffmpeg-static package - first attempt with libwebp_anim
+        // Using the pad filter for safer scaling that works with any input size
+        // Using scale filter that ensures content fills the sticker area better
+        // WhatsApp sticker size optimizations:
+        // 1. Lower quality (-q:v 50 instead of 80)
+        // 2. Limit framerate to 12fps (fps=12)
+        // 3. Disable lossless compression (-lossless 0) 
+        // 4. Add compression_level parameter for smaller file size
+        // 5. Preserve original aspect ratio without forcing square format
+        // The scale filter ensures the largest dimension is 512px while maintaining aspect ratio
+        const ffmpegCommand = `"${ffmpegPath}" -y -i "${tempInputPath}" -vf "scale='min(512,iw)':'min(512,ih)':force_original_aspect_ratio=decrease,fps=12" -vcodec libwebp_anim -lossless 0 -q:v 50 -loop 0 -compression_level 6 -preset default -an -fps_mode vfr -t 3 "${tempOutputPath}"`;
+        
+        console.log('🎬 Running ffmpeg command:', ffmpegCommand);
+        
+        try {
+            const { stdout, stderr } = await execPromise(ffmpegCommand);
+            if (stderr) {
+                console.log('⚠️ FFmpeg stderr (not necessarily an error):', stderr);
+                
+                // Check if the stderr contains codec errors specifically about libwebp_anim
+                if ((stderr.includes('Unknown encoder') && stderr.includes('libwebp_anim')) || 
+                    !fs.existsSync(tempOutputPath) || 
+                    fs.statSync(tempOutputPath).size === 0) {
+                    
+                    console.log('⚠️ Method 1 failed. Trying Method 2/3: standard webp encoder...');
+                    
+                    // Fallback Method 2: Try standard webp encoder (more compatible but sometimes less animation support)
+                    // Using scaling that preserves original aspect ratio without forcing square shape
+                    const fallbackCommand = `"${ffmpegPath}" -y -i "${tempInputPath}" -vf "scale='min(512,iw)':'min(512,ih)':force_original_aspect_ratio=decrease,fps=12" -vcodec webp -lossless 0 -q:v 50 -loop 0 -compression_level 6 -an -fps_mode vfr -t 3 "${tempOutputPath}"`;
+                    
+                    console.log('🎬 Running method 2 ffmpeg command:', fallbackCommand);
+                    try {
+                        const { stdout: fallbackStdout, stderr: fallbackStderr } = await execPromise(fallbackCommand);
+                        
+                        if (fallbackStderr) {
+                            console.log('⚠️ Method 2 FFmpeg stderr:', fallbackStderr);
+                        }
+                        
+                        // Check if the output was created successfully
+                        if (!fs.existsSync(tempOutputPath) || fs.statSync(tempOutputPath).size === 0) {
+                            throw new Error("Method 2 didn't produce a valid output file");
+                        }
+                    } catch (method2Error) {
+                        console.log('⚠️ Method 2 failed. Trying Method 3/3: GIF intermediate conversion...');
+                        
+                        // Fallback Method 3: Use GIF as an intermediate format (most compatible approach)
+                        const tempGifPath = path.join(tempDir, `intermediate-${Date.now()}.gif`);
+                        
+                        // Step 1: Convert to GIF preserving original aspect ratio
+                        const gifCommand = `"${ffmpegPath}" -y -i "${tempInputPath}" -vf "scale='min(512,iw)':'min(512,ih)':force_original_aspect_ratio=decrease,fps=12" -t 3 "${tempGifPath}"`;
+                        
+                        console.log('🎬 Running step 1 of method 3 (video to GIF):', gifCommand);
+                        await execPromise(gifCommand);
+                        
+                        // Step 2: Convert GIF to WebP
+                        const gifToWebpCommand = `"${ffmpegPath}" -y -i "${tempGifPath}" -vcodec webp -lossless 0 -q:v 50 -loop 0 -compression_level 6 "${tempOutputPath}"`;
+                        
+                        console.log('🎬 Running step 2 of method 3 (GIF to WebP):', gifToWebpCommand);
+                        await execPromise(gifToWebpCommand);
+                        
+                        // Clean up intermediate GIF
+                        try {
+                            fs.unlinkSync(tempGifPath);
+                        } catch (e) { /* ignore cleanup errors */ }
+                    }
+                }
+            }
+            
+            // Verify the output file exists and has content
+            if (!fs.existsSync(tempOutputPath) || fs.statSync(tempOutputPath).size === 0) {
+                console.log('⚠️ All FFmpeg methods failed. Attempting final fallback using sharp...');
+                
+                // Try using fluent-ffmpeg for conversion first (more reliable error handling)
+                console.log('⚠️ Trying fluent-ffmpeg approach...');
+                
+                try {
+                    // Let's try a direct simple ffmpeg command first as our alternative approach
+                    // This avoids the fluent-ffmpeg issues completely
+                    console.log('🎬 Trying direct FFmpeg command for webp animation...');
+                    
+                    // Use a scaling approach that preserves original aspect ratio
+                    const directCommand = `"${ffmpegPath}" -y -i "${tempInputPath}" -vf "scale='min(512,iw)':'min(512,ih)':force_original_aspect_ratio=decrease,fps=12" -vcodec webp -lossless 0 -q:v 50 -loop 0 -compression_level 6 -preset default -an -fps_mode vfr -t 3 "${tempOutputPath}"`;
+                    
+                    try {
+                        const { stdout, stderr } = await execPromise(directCommand);
+                        if (stderr) {
+                            console.log('⚠️ Direct command FFmpeg stderr:', stderr);
+                        }
+                        
+                        if (fs.existsSync(tempOutputPath) && fs.statSync(tempOutputPath).size > 0) {
+                            console.log('✅ Direct FFmpeg command successful');
+                            
+                            // Read the output file
+                            const stickerBuffer = fs.readFileSync(tempOutputPath);
+                            
+                            // Clean up temporary files
+                            try {
+                                fs.unlinkSync(tempInputPath);
+                                fs.unlinkSync(tempOutputPath);
+                            } catch (e) {
+                                console.log('⚠️ Cleanup warning:', e.message);
+                            }
+                            
+                            console.log(`✅ Animated sticker created successfully, size: ${stickerBuffer.length} bytes`);
+                            return stickerBuffer;
+                        }
+                        
+                        throw new Error('Direct command did not produce output file');
+                    } catch (directError) {
+                        console.log('⚠️ Direct FFmpeg command failed:', directError.message);
+                        
+                        // Now try with fluent-ffmpeg if it's available
+                        if (ffmpeg && typeof ffmpeg === 'function') {
+                            console.log('🎬 Trying fluent-ffmpeg conversion as backup...');
+                            
+                            await new Promise((resolve, reject) => {
+                                try {
+                                    // Create a new instance of fluent-ffmpeg
+                                    const command = ffmpeg(tempInputPath);
+                                    
+                                    command.outputOptions([
+                                        '-vf', 'scale=\'min(512,iw)\':\'min(512,ih)\':force_original_aspect_ratio=decrease,fps=12',
+                                        '-c:v', 'webp',
+                                        '-lossless', '0',
+                                        '-q:v', '50',
+                                        '-compression_level', '6',
+                                        '-loop', '0',
+                                        '-t', '3',
+                                        '-an',
+                                        '-fps_mode', 'vfr'
+                                    ])
+                                    .output(tempOutputPath)
+                                    .on('end', () => {
+                                        console.log('✅ fluent-ffmpeg conversion successful');
+                                        resolve();
+                                    })
+                                    .on('error', (err) => {
+                                        console.error('❌ fluent-ffmpeg error:', err.message);
+                                        reject(err);
+                                    })
+                                    .run();
+                                } catch (runError) {
+                                    console.error('❌ Error running fluent-ffmpeg:', runError.message);
+                                    reject(runError);
+                                }
+                            });
+                            
+                            if (fs.existsSync(tempOutputPath) && fs.statSync(tempOutputPath).size > 0) {
+                                console.log('✅ fluent-ffmpeg method successful');
+                                
+                                // Read the output file
+                                const stickerBuffer = fs.readFileSync(tempOutputPath);
+                                
+                                // Clean up temporary files
+                                try {
+                                    fs.unlinkSync(tempInputPath);
+                                    fs.unlinkSync(tempOutputPath);
+                                } catch (e) {
+                                    console.log('⚠️ Cleanup warning:', e.message);
+                                }
+                                
+                                console.log(`✅ Animated sticker created successfully, size: ${stickerBuffer.length} bytes`);
+                                return stickerBuffer;
+                            }
+                        } else {
+                            console.log('⚠️ fluent-ffmpeg not available as fallback');
+                            throw new Error('No working FFmpeg method found');
+                        }
+                    }
+                    
+                    // If we got here, check if the output exists
+                    if (fs.existsSync(tempOutputPath) && fs.statSync(tempOutputPath).size > 0) {
+                        console.log('✅ FFmpeg conversion was successful');
+                        
+                        // Read the output file
+                        const stickerBuffer = fs.readFileSync(tempOutputPath);
+                        
+                        // Clean up temporary files
+                        try {
+                            fs.unlinkSync(tempInputPath);
+                            fs.unlinkSync(tempOutputPath);
+                        } catch (e) {
+                            console.log('⚠️ Cleanup warning:', e.message);
+                        }
+                        
+                        console.log(`✅ Animated sticker created successfully, size: ${stickerBuffer.length} bytes`);
+                        return stickerBuffer;
+                    }
+                } catch (fluentError) {
+                    console.log('⚠️ fluent-ffmpeg approach failed, trying final fallback with static sticker...');
+                    
+                    // Final fallback - extract first frame with ffmpeg and create a static sticker
+                    const tempFramePath = path.join(tempDir, `frame-${Date.now()}.jpg`);
+                    const extractFrameCommand = `"${ffmpegPath}" -y -i "${tempInputPath}" -vframes 1 -q:v 2 "${tempFramePath}"`;
+                    
+                    try {
+                        await execPromise(extractFrameCommand);
+                        
+                        if (fs.existsSync(tempFramePath) && fs.statSync(tempFramePath).size > 0) {
+                            // Use sharp (which we know works for static stickers) to create a static sticker
+                            const sharp = (await import('sharp')).default;
+                            const frameBuffer = fs.readFileSync(tempFramePath);
+                            
+                            const staticStickerBuffer = await sharp(frameBuffer)
+                                .resize(512, 512, {
+                                    fit: 'contain',
+                                    background: { r: 0, g: 0, b: 0, alpha: 0 }
+                                })
+                                .webp({
+                                    quality: 80,
+                                    lossless: false
+                                })
+                                .toBuffer();
+                            
+                            // Write the static sticker to the output path
+                            fs.writeFileSync(tempOutputPath, staticStickerBuffer);
+                            
+                            // Clean up frame
+                            try {
+                                fs.unlinkSync(tempFramePath);
+                            } catch (e) { /* ignore cleanup errors */ }
+                            
+                            console.log('⚠️ Created static sticker from first frame as final fallback');
+                            
+                            // Read the output file
+                            const stickerBuffer = fs.readFileSync(tempOutputPath);
+                            
+                            // Clean up temporary files
+                            try {
+                                fs.unlinkSync(tempInputPath);
+                                fs.unlinkSync(tempOutputPath);
+                            } catch (e) {
+                                console.log('⚠️ Cleanup warning:', e.message);
+                            }
+                            
+                            console.log(`✅ Static sticker fallback created successfully, size: ${stickerBuffer.length} bytes`);
+                            return stickerBuffer;
+                        } else {
+                            throw new Error('Could not extract frame from video');
+                        }
+                    } catch (extractFrameError) {
+                        console.log('⚠️ Frame extraction failed:', extractFrameError.message);
+                        throw new Error('All conversion methods failed - could not produce a sticker');
+                    }
+                }
+            }
+            
+            // If we reached here and the output exists, read it and return it
+            if (fs.existsSync(tempOutputPath) && fs.statSync(tempOutputPath).size > 0) {
+                // Read the output file
+                const stickerBuffer = fs.readFileSync(tempOutputPath);
+                
+                // Clean up temporary files
+                try {
+                    fs.unlinkSync(tempInputPath);
+                    fs.unlinkSync(tempOutputPath);
+                } catch (e) {
+                    console.log('⚠️ Cleanup warning:', e.message);
+                }
+                
+                console.log(`✅ Animated sticker created successfully, size: ${stickerBuffer.length} bytes`);
+                return stickerBuffer;
+            } else {
+                throw new Error('All conversion methods failed - no output file was created');
+            }
+            
+        } catch (ffmpegError) {
+            // Clean up temporary files
+            try {
+                fs.unlinkSync(tempInputPath);
+                if (fs.existsSync(tempOutputPath)) {
+                    fs.unlinkSync(tempOutputPath);
+                }
+            } catch (e) { /* ignore cleanup errors */ }
+            
+            console.error('❌ FFmpeg error details:', ffmpegError);
+            throw new Error(`FFmpeg processing failed: ${ffmpegError.message}`);
+        }
+    } catch (error) {
+        console.error('❌ Error creating animated sticker:', error.message);
+        console.error('📋 Stack trace:', error.stack);
+        throw error;
+    }
+}
+
 // Global variables for connection management
 let isConnecting = false;
 let reconnectAttempts = 0;
@@ -682,13 +1124,16 @@ async function startBot() {
                         const helpMessage = `🤖 *MASTER-CHIEF Commands:*\n\n` +
                             `• *Hi* or *Hello* - Get greeting (flexible patterns)\n` +
                             `• *!sticker* - Create sticker from image\n` +
+                            `• *!asticker* - Create animated sticker from video/GIF\n` +
                             `• *!help* or *!commands* - Show this help menu\n` +
                             `• *!about* - Bot info, features & developer details\n` +
                             `• *!status* - Check bot status and uptime\n` +
                             `${!isGroup ? `• *!reset* - Fix session errors (private only)\n` : ''}` +
                             `\n📱 *Sticker Creation:*\n` +
                             `1. Send image with "!sticker" caption\n` +
-                            `2. Reply to image with "!sticker"\n\n` +
+                            `2. Reply to image with "!sticker"\n` +
+                            `3. Send video/GIF with "!asticker" caption\n` +
+                            `4. Reply to video/GIF with "!asticker"\n\n` +
                             `${isGroup ? '💡 *Group Tip:* MASTER-CHIEF works in groups too!' : '💡 *Tip:* All MASTER-CHIEF commands work in private chat!'}`;
                             
                         await sock.sendMessage(sender, { text: helpMessage });
@@ -714,6 +1159,7 @@ async function startBot() {
                             const aboutMessage = `🤖 *MASTER-CHIEF - About*\n\n` +
                                 `*✨ Features:*\n` +
                                 `• 🎨 Advanced sticker creation from any image\n` +
+                                `• 🎬 Animated sticker creation from videos/GIFs\n` +
                                 `• 🤖 Smart greeting detection with flexible patterns\n` +
                                 `• 🛡️ Intelligent content filtering system\n` +
                                 `• 🎥 Image responses for invalid commands\n` +
@@ -753,6 +1199,7 @@ async function startBot() {
                             const aboutMessage = `🤖 *MASTER-CHIEF - About*\n\n` +
                                 `*✨ Features:*\n` +
                                 `• 🎨 Advanced sticker creation from any image\n` +
+                                `• 🎬 Animated sticker creation from videos/GIFs\n` +
                                 `• 🤖 Smart greeting detection with flexible patterns\n` +
                                 `• 🛡️ Intelligent content filtering system\n` +
                                 `• 🎥 Image responses for invalid commands\n` +
@@ -833,7 +1280,7 @@ async function startBot() {
                         }
                     }
                     // Handle invalid commands (starts with ! but not a valid command)
-                    else if (text.startsWith('!') && text !== '!sticker' && text !== '!about' && text !== '!help' && text !== '!commands' && text !== '!reset' && text !== '!status') {
+                    else if (text.startsWith('!') && text !== '!sticker' && text !== '!asticker' && text !== '!about' && text !== '!help' && text !== '!commands' && text !== '!reset' && text !== '!status') {
                         const senderName = msg.pushName || 'Unknown';
                         const actualSender = isGroup ? msg.key.participant : sender;
                         
@@ -1175,41 +1622,40 @@ async function startBot() {
                             while (attempts < maxAttempts) {
                                 try {
                                     console.log(`📥 Downloading quoted image (attempt ${attempts + 1}/${maxAttempts})...`);
-
-                                    // Try to download with different methods
-                                    if (attempts === 0) {
-                                        // First attempt: Use constructed message
-                                        imageBuffer = await Baileys.downloadMediaMessage(quotedMsg, 'buffer', {});
-                                    } else if (attempts === 1) {
-                                        // Second attempt: Try with minimal key structure
-                                        const simpleQuotedMsg = {
-                                            key: { id: contextInfo.stanzaId || msg.key.id },
-                                            message: { imageMessage: quotedMessage.imageMessage }
-                                        };
-                                        imageBuffer = await Baileys.downloadMediaMessage(simpleQuotedMsg, 'buffer', {});
-                                    } else {
-                                        // Third attempt: Direct download from imageMessage
-                                        const directMsg = {
-                                            message: { imageMessage: quotedMessage.imageMessage }
-                                        };
-                                        imageBuffer = await Baileys.downloadMediaMessage(directMsg, 'buffer', {});
+                                    
+                                    // Add timeout to prevent hanging downloads
+                                    const downloadPromise = Baileys.downloadMediaMessage(quotedMsg, 'buffer', {});
+                                    const timeoutPromise = new Promise((_, reject) => 
+                                        setTimeout(() => reject(new Error('Download timeout')), 30000)
+                                    );
+                                    
+                                    imageBuffer = await Promise.race([downloadPromise, timeoutPromise]);
+                                    
+                                    // Validate downloaded buffer
+                                    if (!imageBuffer || imageBuffer.length === 0) {
+                                        throw new Error('Downloaded buffer is empty');
                                     }
-
-                                    console.log('✅ Successfully downloaded quoted image');
+                                    
+                                    // Check if buffer contains valid image data
+                                    if (imageBuffer.length < 1000) {
+                                        throw new Error('Image buffer too small, likely corrupted');
+                                    }
+                                    
+                                    console.log(`✅ Image downloaded successfully, size: ${imageBuffer.length} bytes`);
                                     break;
                                 } catch (downloadError) {
                                     attempts++;
                                     console.error(`❌ Download attempt ${attempts} failed:`, downloadError.message);
                                     if (attempts >= maxAttempts) {
-                                        throw new Error(`Failed to download quoted image after ${maxAttempts} attempts: ${downloadError.message}`);
+                                        throw new Error('Failed to download image after multiple attempts');
                                     }
                                     // Wait before retry
-                                    await new Promise(resolve => setTimeout(resolve, 1000));
+                                    await new Promise(resolve => setTimeout(resolve, 2000));
                                 }
                             }
 
                             if (!imageBuffer) {
-                                throw new Error('Failed to download quoted image - buffer is empty');
+                                throw new Error('Failed to download image');
                             }
 
                             // Create sticker
@@ -1221,14 +1667,154 @@ async function startBot() {
                                 mimetype: 'image/webp'
                             });
 
-                            console.log(`✅ Sticker created from reply successfully in ${isGroup ? 'group' : 'private chat'}`);
+                            console.log(`✅ Sticker sent successfully to ${isGroup ? 'group' : 'private chat'}`);
                         } catch (stickerError) {
-                            console.error('❌ Error creating sticker from reply:', stickerError.message);
-                            console.error('📋 Full error:', stickerError);
+                            console.error('❌ Error creating sticker:', stickerError.message);
                             
                             const errorText = isGroup
-                                ? `❌ @${actualSender.split('@')[0]} Failed to create sticker from replied image: ${stickerError.message}\n\nTip: Try sending the image directly with "!sticker" as caption instead.`
-                                : `❌ Failed to create sticker from replied image: ${stickerError.message}\n\nTip: Try sending the image directly with "!sticker" as caption instead.`;
+                                ? `❌ @${actualSender.split('@')[0]} Failed to create sticker: ${stickerError.message}\n\nPlease make sure you sent a valid image (JPG, PNG, etc.)`
+                                : `❌ Failed to create sticker: ${stickerError.message}\n\nPlease make sure you sent a valid image (JPG, PNG, etc.)`;
+                                
+                            const errorOptions = isGroup
+                                ? { text: errorText, mentions: [actualSender] }
+                                : { text: errorText };
+                                
+                            await sock.sendMessage(sender, errorOptions);
+                        }
+                    }
+                    
+                    // Handle reply to video for animated sticker creation
+                    if (text === '!asticker' && (quotedMessage?.videoMessage || 
+                        (quotedMessage?.documentMessage && quotedMessage?.documentMessage.mimetype?.includes('gif')))) {
+                        const senderName = msg.pushName || 'Unknown';
+                        const actualSender = isGroup ? msg.key.participant : sender;
+                        const isVideoReply = !!quotedMessage?.videoMessage;
+                        const isGifReply = !!quotedMessage?.documentMessage?.mimetype?.includes('gif');
+                        
+                        console.log(`🎬 Processing replied ${isVideoReply ? 'video' : 'GIF'} for animated sticker creation from ${senderName}...`);
+
+                        try {
+                            // Send processing message with mention in groups
+                            const replyProcessingText = isGroup 
+                                ? `🎬 @${actualSender.split('@')[0]} Creating animated sticker from replied ${isVideoReply ? 'video' : 'GIF'}... Please wait!`
+                                : `🎬 Creating animated sticker from replied ${isVideoReply ? 'video' : 'GIF'}... Please wait!`;
+                                
+                            const replyProcessingOptions = isGroup 
+                                ? { text: replyProcessingText, mentions: [actualSender] }
+                                : { text: replyProcessingText };
+                                
+                            await sock.sendMessage(sender, replyProcessingOptions);
+
+                            // Try different approaches to construct the quoted message
+                            let quotedMsg;
+
+                            // Method 1: Use the participant and stanzaId from contextInfo
+                            if (contextInfo.participant && contextInfo.stanzaId) {
+                                quotedMsg = {
+                                    key: {
+                                        remoteJid: contextInfo.participant,
+                                        fromMe: false,
+                                        id: contextInfo.stanzaId
+                                    },
+                                    message: isVideoReply ? 
+                                        { videoMessage: quotedMessage.videoMessage } :
+                                        { documentMessage: quotedMessage.documentMessage }
+                                };
+                            }
+                            // Method 2: Use the current sender and stanzaId
+                            else if (contextInfo.stanzaId) {
+                                quotedMsg = {
+                                    key: {
+                                        remoteJid: sender,
+                                        fromMe: false,
+                                        id: contextInfo.stanzaId
+                                    },
+                                    message: isVideoReply ? 
+                                        { videoMessage: quotedMessage.videoMessage } :
+                                        { documentMessage: quotedMessage.documentMessage }
+                                };
+                            }
+                            // Method 3: Fallback to current message structure
+                            else {
+                                quotedMsg = {
+                                    key: {
+                                        remoteJid: sender,
+                                        fromMe: false,
+                                        id: msg.key.id + '_quoted'
+                                    },
+                                    message: isVideoReply ? 
+                                        { videoMessage: quotedMessage.videoMessage } :
+                                        { documentMessage: quotedMessage.documentMessage }
+                                };
+                            }
+
+                            console.log('📋 Constructed quoted message key:', quotedMsg.key);
+
+                            // Download the quoted media with retries
+                            let mediaBuffer;
+                            let attempts = 0;
+                            const maxAttempts = 3;
+
+                            while (attempts < maxAttempts) {
+                                try {
+                                    console.log(`📥 Downloading quoted ${isVideoReply ? 'video' : 'GIF'} (attempt ${attempts + 1}/${maxAttempts})...`);
+
+                                    // Try to download with different methods
+                                    if (attempts === 0) {
+                                        // First attempt: Use constructed message
+                                        mediaBuffer = await Baileys.downloadMediaMessage(quotedMsg, 'buffer', {});
+                                    } else if (attempts === 1) {
+                                        // Second attempt: Try with minimal key structure
+                                        const simpleQuotedMsg = {
+                                            key: { id: contextInfo.stanzaId || msg.key.id },
+                                            message: isVideoReply ? 
+                                                { videoMessage: quotedMessage.videoMessage } :
+                                                { documentMessage: quotedMessage.documentMessage }
+                                        };
+                                        mediaBuffer = await Baileys.downloadMediaMessage(simpleQuotedMsg, 'buffer', {});
+                                    } else {
+                                        // Third attempt: Direct download from message object
+                                        const directMsg = {
+                                            message: isVideoReply ? 
+                                                { videoMessage: quotedMessage.videoMessage } :
+                                                { documentMessage: quotedMessage.documentMessage }
+                                        };
+                                        mediaBuffer = await Baileys.downloadMediaMessage(directMsg, 'buffer', {});
+                                    }
+
+                                    console.log(`✅ Successfully downloaded quoted ${isVideoReply ? 'video' : 'GIF'}`);
+                                    break;
+                                } catch (downloadError) {
+                                    attempts++;
+                                    console.error(`❌ Download attempt ${attempts} failed:`, downloadError.message);
+                                    if (attempts >= maxAttempts) {
+                                        throw new Error(`Failed to download quoted ${isVideoReply ? 'video' : 'GIF'} after ${maxAttempts} attempts: ${downloadError.message}`);
+                                    }
+                                    // Wait before retry
+                                    await new Promise(resolve => setTimeout(resolve, 2000));
+                                }
+                            }
+
+                            if (!mediaBuffer) {
+                                throw new Error(`Failed to download quoted ${isVideoReply ? 'video' : 'GIF'} - buffer is empty`);
+                            }
+
+                            // Create animated sticker
+                            const animatedStickerBuffer = await createAnimatedSticker(mediaBuffer);
+
+                            // Send sticker
+                            await sock.sendMessage(sender, {
+                                sticker: animatedStickerBuffer,
+                                mimetype: 'image/webp'
+                            });
+
+                            console.log(`✅ Animated sticker created from replied ${isVideoReply ? 'video' : 'GIF'} successfully in ${isGroup ? 'group' : 'private chat'}`);
+                        } catch (stickerError) {
+                            console.error(`❌ Error creating animated sticker from replied ${isVideoReply ? 'video' : 'GIF'}:`, stickerError.message);
+                            
+                            const errorText = isGroup
+                                ? `❌ @${actualSender.split('@')[0]} Failed to create animated sticker: ${stickerError.message}\n\nTip: Try sending the ${isVideoReply ? 'video' : 'GIF'} directly with "!asticker" as caption instead.`
+                                : `❌ Failed to create animated sticker: ${stickerError.message}\n\nTip: Try sending the ${isVideoReply ? 'video' : 'GIF'} directly with "!asticker" as caption instead.`;
                                 
                             const errorOptions = isGroup
                                 ? { text: errorText, mentions: [actualSender] }
@@ -1238,7 +1824,180 @@ async function startBot() {
                         }
                     }
                 }
+                
+                // Handle video messages with animated sticker command
+                if (msg.message?.videoMessage) {
+                    const caption = msg.message.videoMessage.caption?.toLowerCase().trim();
 
+                    if (caption === '!asticker') {
+                        const senderName = msg.pushName || 'Unknown';
+                        const actualSender = isGroup ? msg.key.participant : sender;
+                        
+                        console.log(`🎬 Processing video message for animated sticker creation from ${senderName}...`);
+
+                        try {
+                            // Send processing message with mention in groups
+                            const processingTextVideo = isGroup 
+                                ? `🎬 @${actualSender.split('@')[0]} Creating animated sticker... This may take a moment!`
+                                : '🎬 Creating animated sticker... This may take a moment!';
+                                
+                            const processingOptionsVideo = isGroup 
+                                ? { text: processingTextVideo, mentions: [actualSender] }
+                                : { text: processingTextVideo };
+                                
+                            await sock.sendMessage(sender, processingOptionsVideo);
+
+                            // Download the video with retries
+                            let videoBuffer;
+                            let attempts = 0;
+                            const maxAttempts = 3;
+
+                            while (attempts < maxAttempts) {
+                                try {
+                                    console.log(`📥 Downloading video (attempt ${attempts + 1}/${maxAttempts})...`);
+                                    
+                                    // Add timeout to prevent hanging downloads
+                                    const downloadPromise = Baileys.downloadMediaMessage(msg, 'buffer', {});
+                                    const timeoutPromise = new Promise((_, reject) => 
+                                        setTimeout(() => reject(new Error('Download timeout')), 60000)  // Longer timeout for videos
+                                    );
+                                    
+                                    videoBuffer = await Promise.race([downloadPromise, timeoutPromise]);
+                                    
+                                    // Validate downloaded buffer
+                                    if (!videoBuffer || videoBuffer.length === 0) {
+                                        throw new Error('Downloaded buffer is empty');
+                                    }
+                                    
+                                    console.log(`✅ Video downloaded successfully, size: ${videoBuffer.length} bytes`);
+                                    break;
+                                } catch (downloadError) {
+                                    attempts++;
+                                    console.error(`❌ Download attempt ${attempts} failed:`, downloadError.message);
+                                    if (attempts >= maxAttempts) {
+                                        throw new Error('Failed to download video after multiple attempts');
+                                    }
+                                    // Wait before retry
+                                    await new Promise(resolve => setTimeout(resolve, 3000));
+                                }
+                            }
+
+                            if (!videoBuffer) {
+                                throw new Error('Failed to download video');
+                            }
+
+                            // Create animated sticker
+                            const animatedStickerBuffer = await createAnimatedSticker(videoBuffer);
+
+                            // Send sticker
+                            await sock.sendMessage(sender, {
+                                sticker: animatedStickerBuffer,
+                                mimetype: 'image/webp'
+                            });
+
+                            console.log(`✅ Animated sticker sent successfully to ${isGroup ? 'group' : 'private chat'}`);
+                        } catch (stickerError) {
+                            console.error('❌ Error creating animated sticker:', stickerError.message);
+                            
+                            const errorText = isGroup
+                                ? `❌ @${actualSender.split('@')[0]} Failed to create animated sticker: ${stickerError.message}\n\nPlease make sure you sent a valid video/GIF file.`
+                                : `❌ Failed to create animated sticker: ${stickerError.message}\n\nPlease make sure you sent a valid video/GIF file.`;
+                                
+                            const errorOptions = isGroup
+                                ? { text: errorText, mentions: [actualSender] }
+                                : { text: errorText };
+                                
+                            await sock.sendMessage(sender, errorOptions);
+                        }
+                    }
+                }
+                
+                // Handle GIF messages with animated sticker command
+                if (msg.message?.documentMessage && msg.message.documentMessage.mimetype?.includes('gif')) {
+                    const caption = msg.message.documentMessage.caption?.toLowerCase().trim();
+
+                    if (caption === '!asticker') {
+                        const senderName = msg.pushName || 'Unknown';
+                        const actualSender = isGroup ? msg.key.participant : sender;
+                        
+                        console.log(`🎭 Processing GIF document for animated sticker creation from ${senderName}...`);
+
+                        try {
+                            // Send processing message with mention in groups
+                            const processingTextGif = isGroup 
+                                ? `🎭 @${actualSender.split('@')[0]} Creating animated sticker from GIF... Please wait!`
+                                : '🎭 Creating animated sticker from GIF... Please wait!';
+                                
+                            const processingOptionsGif = isGroup 
+                                ? { text: processingTextGif, mentions: [actualSender] }
+                                : { text: processingTextGif };
+                                
+                            await sock.sendMessage(sender, processingOptionsGif);
+
+                            // Download the GIF with retries
+                            let gifBuffer;
+                            let attempts = 0;
+                            const maxAttempts = 3;
+
+                            while (attempts < maxAttempts) {
+                                try {
+                                    console.log(`📥 Downloading GIF document (attempt ${attempts + 1}/${maxAttempts})...`);
+                                    
+                                    // Add timeout to prevent hanging downloads
+                                    const downloadPromise = Baileys.downloadMediaMessage(msg, 'buffer', {});
+                                    const timeoutPromise = new Promise((_, reject) => 
+                                        setTimeout(() => reject(new Error('Download timeout')), 30000)
+                                    );
+                                    
+                                    gifBuffer = await Promise.race([downloadPromise, timeoutPromise]);
+                                    
+                                    // Validate downloaded buffer
+                                    if (!gifBuffer || gifBuffer.length === 0) {
+                                        throw new Error('Downloaded buffer is empty');
+                                    }
+                                    
+                                    console.log(`✅ GIF downloaded successfully, size: ${gifBuffer.length} bytes`);
+                                    break;
+                                } catch (downloadError) {
+                                    attempts++;
+                                    console.error(`❌ Download attempt ${attempts} failed:`, downloadError.message);
+                                    if (attempts >= maxAttempts) {
+                                        throw new Error('Failed to download GIF after multiple attempts');
+                                    }
+                                    // Wait before retry
+                                    await new Promise(resolve => setTimeout(resolve, 2000));
+                                }
+                            }
+
+                            if (!gifBuffer) {
+                                throw new Error('Failed to download GIF');
+                            }
+
+                            // Create animated sticker
+                            const animatedStickerBuffer = await createAnimatedSticker(gifBuffer);
+
+                            // Send sticker
+                            await sock.sendMessage(sender, {
+                                sticker: animatedStickerBuffer,
+                                mimetype: 'image/webp'
+                            });
+
+                            console.log(`✅ Animated sticker from GIF sent successfully to ${isGroup ? 'group' : 'private chat'}`);
+                        } catch (stickerError) {
+                            console.error('❌ Error creating animated sticker from GIF:', stickerError.message);
+                            
+                            const errorText = isGroup
+                                ? `❌ @${actualSender.split('@')[0]} Failed to create animated sticker from GIF: ${stickerError.message}`
+                                : `❌ Failed to create animated sticker from GIF: ${stickerError.message}`;
+                                
+                            const errorOptions = isGroup
+                                ? { text: errorText, mentions: [actualSender] }
+                                : { text: errorText };
+                                
+                            await sock.sendMessage(sender, errorOptions);
+                        }
+                    }
+                }
             } catch (error) {
                 console.error('❌ Error processing message:', error.message);
                 console.error('📋 Error details:', error.stack);
